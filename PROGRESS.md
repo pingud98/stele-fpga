@@ -65,3 +65,19 @@ Timestamped per-stage log. Operator-facing.
   negative control proving the tCSM checker fires without splitting, golden
   image spot-check through the PHY.
 - Next: Stage 4 — datapath primitives (milestone 5).
+
+## 2026-07-03 13:55 — Stage 4: Datapath primitives (milestone 5) — DONE
+
+- `mult_synth.v` (TT path), `mult_dsp.v` (SB_MAC16, USE_DSP only),
+  `ternary_mac.v` (18-bit exact acc + requant view), `scan_alu.v` (h-update,
+  generic mul-requant, 20-bit y-accumulator), `pwl_nonlin.v` (shared-table
+  PWL eval).
+- Bug found by test: bare concatenations in signed contexts made `>>>`
+  logical and comparisons unsigned (ternary_mac requant, yacc requant, silu
+  ymin clamp). Fixed by explicit signed extension wires; noted as a design
+  rule in the RTL comments.
+- cocotb `test_datapath`: **9/9 PASS** — softplus/silu/exp exhaustive
+  bit-exact vs golden/pwl.py, random ternary rows vs rm.tmac, h-update /
+  mul-requant / y-acc vs reference formulas incl. worst-case extremes, and a
+  full golden-trace scan channel replayed through the primitives.
+- Next: Stage 5 — sequencer + single-layer FSM (milestone 6).
