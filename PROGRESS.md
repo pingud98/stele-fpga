@@ -134,3 +134,19 @@ Timestamped per-stage log. Operator-facing.
 - **build/stele.bin produced** (104,090 B). NOT programmed to any board
   (pre-hardware run per runbook §1).
 - Full suite re-run as freeze gate after the last RTL touch: see Stage 8.
+
+## 2026-07-03 19:50 — Stage 8: Final report — DONE (RUN COMPLETE)
+
+- Freeze gate: `make sim-all` on the final RTL — **24/24 tests green**
+  (dq_loopback 4, phy 9, datapath 9, top_layer 1, top_full 1). Makefile
+  pattern-rule bug fixed (.PHONY targets don't match `sim-%`).
+- REPORT.md written: pass/fail matrix, resources (4096/5280 LC, 0 EBR,
+  0 DSP), icetime ceiling 5.64 MHz, bitstream path, handoff steps, risk note.
+- **Key finding documented**: tCSM (4 us) requires core clk >= 16 MHz for
+  array accesses vs a 5.64 MHz datapath ceiling — milestones 1-2 on hardware
+  are unaffected (register space), milestone 3+ needs pipelining or a
+  CK=clk/2 PHY first. This is the highest-value engineering output of the
+  run beside the green suite itself.
+- Deliverables: green sims through full 8-token generation (bit-exact vs
+  golden), routed+timed UP5K design, build/stele.bin — all reproducible via
+  `source env.sh && make all`. Stopping per runbook §10; no board programmed.

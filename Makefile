@@ -20,7 +20,8 @@ golden:
 lint:
 	verilator --lint-only -Wall -Irtl $(RTL_CORE) --top-module tt_um_stele_ssm
 
-sim-%: lint
+# static pattern rule: .PHONY targets do not match implicit `sim-%` rules
+$(addprefix sim-,$(SIM_TESTS)): sim-%: lint
 	$(MAKE) -C sim/tb TEST=$*
 
 sim-all: $(addprefix sim-,$(SIM_TESTS))

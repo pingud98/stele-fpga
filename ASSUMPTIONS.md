@@ -83,3 +83,8 @@ Every default taken, version pinned, and deviation from the spec. Started 2026-0
   ~0.4 tokens/s at 3 MHz for the tiny config (4.45 M cycles / 8 tokens).
 - Embedding row indexing assumes D_MODEL=64 (tok<<6) — noted for the future
   fully-parametric build.
+- **tCSM/Fmax gap (key finding)**: real HyperRAM tCSM (4 us) implies core
+  clk >= 16 MHz for array accesses in the CK=clk/4 scheme; datapath ceiling
+  is 5.64 MHz. Register-space reads (milestone 2 / first light) are
+  unaffected. Documented in REPORT.md §5; resolving it (pipelining or a
+  CK=clk/2 PHY variant) is deferred to the hardware phase.
