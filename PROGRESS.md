@@ -33,3 +33,17 @@ Timestamped per-stage log. Operator-facing.
 - Sanity suite `golden/test_reference.py`: **11 passed** (PWL accuracy bounds,
   packing round-trip, determinism, liveness, state-matters, layout checks).
 - Next: Stage 2 (behavioural HyperRAM model + DQ I/O loopback, milestone 1).
+
+## 2026-07-03 12:55 — Stage 2: HyperRAM model + DQ I/O (milestone 1) — DONE
+
+- `rtl/hyperbus_dq_io.v`: SB_IO registered bidir (ICE40 build) with a
+  behaviourally identical generic path (sim/TT); 1-clk latency each direction.
+- `sim/hyperram_model.v`: behavioural HyperBus RAM — CA decode, CSR-style
+  configurable latency (param + cfg_extra_latency 2x hook), RWDS latency
+  indication + read strobe, DQ tri-state, tCSM(4us) assertion, $readmemh image
+  load, register space (ID0=0x0c81, CR0 r/w). Protocol contract documented in
+  the header (edge-numbered, big-endian words, linear burst).
+- cocotb `test_dq_loopback`: **4/4 PASS** (drive, tri-state, receive,
+  OE-turnaround streaming). Verilator lint clean (one benign PROCASSINIT note
+  on the sim-only generic path).
+- Next: Stage 3 — HyperBus PHY, milestones 2–4.
