@@ -121,3 +121,16 @@ Timestamped per-stage log. Operator-facing.
   trace.npz; zero tCSM violations. Suite totals: dq_loopback 4/4, phy 9/9,
   datapath 9/9, top_layer 1/1, top_full 1/1. Verilator lint fully clean.
 - Next: Stage 7 — PnR, timing, bitstream.
+
+## 2026-07-03 19:20 — Stage 7: Synthesis, PnR, timing, bitstream — DONE
+
+- First PnR attempt: 6001/5280 LC (113%). Area work (each step re-verified):
+  23-bit address path, single shared multiplier (5 mults -> 1), regfile port
+  reductions, CSR pruning, and a CSR_LITE FPGA-build variant hardwiring model
+  shape (sim/TT keep full CSRs). Details in ASSUMPTIONS.md.
+- Final: **4096/5280 LC (77%), 0 EBR/BRAM, 0 DSP** (TT-faithful: synthesizable
+  multiplier only, no inferred RAM). nextpnr routes at 3 MHz; **icetime
+  ceiling 5.64 MHz**; wrapper divides the 12 MHz oscillator by 4.
+- **build/stele.bin produced** (104,090 B). NOT programmed to any board
+  (pre-hardware run per runbook §1).
+- Full suite re-run as freeze gate after the last RTL touch: see Stage 8.

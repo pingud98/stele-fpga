@@ -91,7 +91,9 @@ module sequencer (
         S_LM_INIT   = 6'd49, S_EMIT      = 6'd50, S_HALT     = 6'd51,
         S_RD_ISSUE  = 6'd52, S_RD_WAIT   = 6'd53,
         S_WR_ISSUE  = 6'd54, S_WR_WAIT   = 6'd55,
-        S_WBPAIR    = 6'd56, S_LADV     = 6'd57;
+        S_WBPAIR    = 6'd56, S_LADV     = 6'd57,
+        S_SC_N3     = 6'd58, S_SC_N4    = 6'd59, S_SC_N5    = 6'd60,
+        S_GT_C2     = 6'd61;
 
     reg [5:0] state, ret, ret2;   // ret2: continuation after S_WBPAIR write
 
@@ -121,12 +123,12 @@ module sequencer (
     reg         rf_we;
     reg  [5:0]  rf_waddr;
     reg  [7:0]  rf_wdata;
-    reg  [5:0]  ra, rb, rc;
-    wire [7:0]  rda, rdb, rdc;
+    reg  [5:0]  ra;
+    reg  [4:0]  rb;
+    wire [7:0]  rda, rdb;
     regfile rf (.clk(clk), .we(rf_we), .waddr(rf_waddr), .wdata(rf_wdata),
                 .raddr_a(ra), .rdata_a(rda),
-                .raddr_b(rb), .rdata_b(rdb),
-                .raddr_c(rc), .rdata_c(rdc));
+                .raddr_b(rb), .rdata_b(rdb));
 
     // ---------------- layer bases --------------------------------------
     reg  layer_rst, layer_next;
@@ -151,24 +153,19 @@ module sequencer (
                       .trit(tm_trit), .x(tm_x), .shift(tm_shift),
                       .acc(tm_acc), .q8(tm_q8));
 
-    reg  [7:0]  sa_abar, sa_h, sa_bbar, sa_u;
-    wire [7:0]  sa_hnew;
     reg  [7:0]  sa_mula, sa_mulb;
     reg         sa_mula_u;
     reg  [3:0]  sa_mshift;
-    wire [7:0]  sa_mulout;
+    wire [7:0]  sa_mulout, sa_hnew;
     wire signed [16:0] sa_mulp;
-    wire        sa_mac_en, sa_mac_clr;
-    reg  [7:0]  sa_mac_a, sa_mac_b;
+    wire        sa_mac_en, sa_mac_clr, sa_p_latch;
     wire signed [19:0] sa_yacc;
     wire [7:0]  sa_yq8;
     scan_alu salu (.clk(clk), .rst_n(rst_n),
-                   .abar(sa_abar), .h_in(sa_h), .bbar(sa_bbar), .u_in(sa_u),
-                   .h_new(sa_hnew),
                    .mula(sa_mula), .mulb(sa_mulb), .mula_unsigned(sa_mula_u),
                    .mshift(sa_mshift), .mul_out(sa_mulout), .mul_p(sa_mulp),
-                   .mac_en(sa_mac_en), .mac_clr(sa_mac_clr),
-                   .mac_a(sa_mac_a), .mac_b(sa_mac_b), .mac_shift(S_C),
+                   .p_latch(sa_p_latch), .h_new(sa_hnew),
+                   .mac_en(sa_mac_en), .mac_clr(sa_mac_clr), .mac_shift(S_C),
                    .yacc(sa_yacc), .yacc_q8(sa_yq8));
 
     reg  [15:0] pwl_x;
@@ -207,12 +204,7 @@ module sequencer (
     reg        byte_lane;
     reg [1:0]  creg_sel;         // 0 delta, 1 u, 2 kb, 3 x1b
     reg [7:0]  delta_c, u_c, kb, x1b;
-
-    // dedicated dA = delta*A multiplier for the scan exp input. Keeping this
-    // off the shared mul path avoids a false combinational cycle
-    // (mul -> pwl in one state, pwl -> mul in another).
-    wire signed [16:0] da_p;
-    mult_synth m_da (.a(delta_c), .b(rda), .a_unsigned(1'b1), .p(da_p));
+    reg [7:0]  bbar_r, hnew_r, g_r;
 
     reg        wr_idx;           // which wb byte is being sent
 
@@ -238,7 +230,8 @@ module sequencer (
     assign tm_en  = (state == S_DTS_MAC) || (state == S_CV_MAC) ||
                     (state == S_RD_WAIT && dst == DST_MAC && rd_valid);
     assign sa_mac_clr = (state == S_SC_H) || (state == S_SC_NEXT);
-    assign sa_mac_en  = (state == S_SC_N2);
+    assign sa_mac_en  = (state == S_SC_N5);
+    assign sa_p_latch = (state == S_SC_N3);
 
     // write data mux (combinational; rf_rptr/wr_idx advance on wr_ready)
     always @* begin
@@ -260,11 +253,9 @@ module sequencer (
     // ---------------- combinational port routing -----------------------
     always @* begin
         // defaults
-        ra = 6'd0; rb = 6'd0; rc = 6'd0;
+        ra = 6'd0; rb = 5'd0;
         pwl_x = 16'd0; pwl_sel = 2'd0;
         sa_mula = 8'd0; sa_mulb = 8'd0; sa_mula_u = 1'b0; sa_mshift = 4'd0;
-        sa_abar = abar_r; sa_h = rdb; sa_bbar = sa_mulout; sa_u = u_c;
-        sa_mac_a = rdc; sa_mac_b = sa_hnew;
         tm_trit = 2'd0; tm_x = 8'd0; tm_shift = q_shift;
 
         case (state)
@@ -283,7 +274,7 @@ module sequencer (
             end
             S_DTS_MAC: begin
                 ra      = {2'b00, col[3:0]};        // w byte for row j
-                rb      = 6'd16 + {1'b0, n_idx};    // dtr[k]
+                rb      = 5'd16 + n_idx;            // dtr[k]
                 tm_trit = trit_dts;
                 tm_x    = rdb;
             end
@@ -297,38 +288,56 @@ module sequencer (
                 tm_x    = (n_idx[1:0] == 2'd3) ? x1b : rda;
             end
             S_CV_STAGE: begin
-                rb = {4'b0000, n_idx[1:0]} + 6'd1; // rf[1], rf[2]
+                rb = {3'b000, n_idx[1:0]} + 5'd1;  // rf[1], rf[2]
             end
             S_CV_Q: begin
                 pwl_sel = 2'd1;                     // silu
                 pwl_x   = {{8{tm_q8[7]}}, tm_q8};
             end
-            S_SC_N1: begin
+            S_SC_N1: begin                      // dA = delta*A[n] -> exp
                 ra       = {2'b00, n_idx[3:0]};     // A[n] in rf[0..15]
+                sa_mula  = delta_c;
+                sa_mulb  = rda;
+                sa_mula_u = 1'b1;
                 pwl_sel  = 2'd2;                    // exp
-                pwl_x    = da_p[15:0];              // delta * A[n]
+                pwl_x    = sa_mulp[15:0];
             end
-            S_SC_N2: begin
+            S_SC_N2: begin                      // bbar = rr(delta*B[n], 4)
                 ra       = 6'd32 + {2'b00, n_idx[3:0]};  // B[n]
-                rb       = 6'd16 + {2'b00, n_idx[3:0]};  // h[n]
-                rc       = 6'd48 + {2'b00, n_idx[3:0]};  // C[n]
                 sa_mula  = delta_c;
                 sa_mulb  = rda;
                 sa_mula_u = 1'b1;
                 sa_mshift = S_DB;
             end
-            S_GT_CALC: begin
-                ra       = {2'b00, col[3:0]};       // y[j]
-                rb       = 6'd16 + {2'b00, col[3:0]}; // z[j]
-                pwl_sel  = 2'd1;                    // silu(z)
-                pwl_x    = {{8{rdb[7]}}, rdb};
+            S_SC_N3: begin                      // p_r <= abar*h[n]
+                ra       = 6'd16 + {2'b00, n_idx[3:0]};  // h[n]
+                sa_mula  = abar_r;
+                sa_mulb  = rda;
+                sa_mula_u = 1'b1;
+            end
+            S_SC_N4: begin                      // h_new = rr(p_r + bbar*u, 7)
+                sa_mula  = bbar_r;
+                sa_mulb  = u_c;
+            end
+            S_SC_N5: begin                      // yacc += C[n]*h_new
+                ra       = 6'd48 + {2'b00, n_idx[3:0]};  // C[n]
                 sa_mula  = rda;
-                sa_mulb  = pwl_y;
+                sa_mulb  = hnew_r;
+            end
+            S_GT_CALC: begin                    // g_r <= silu(z[j])
+                rb       = 5'd16 + {1'b0, col[3:0]};  // z[j]
+                pwl_sel  = 2'd1;
+                pwl_x    = {{8{rdb[7]}}, rdb};
+            end
+            S_GT_C2: begin                      // y[j] = rr(y[j]*g_r, S_G)
+                ra       = {2'b00, col[3:0]};       // y[j]
+                sa_mula  = rda;
+                sa_mulb  = g_r;
                 sa_mshift = S_G;
             end
             S_VA_CALC: begin
                 ra = {2'b00, col[3:0]};
-                rb = 6'd16 + {2'b00, col[3:0]};
+                rb = 5'd16 + {1'b0, col[3:0]};
             end
             default: ;
         endcase
@@ -352,6 +361,7 @@ module sequencer (
             rf_wptr <= 6'd0; rf_rptr <= 6'd0;
             byte_lane <= 1'b0; creg_sel <= 2'd0;
             delta_c <= 8'd0; u_c <= 8'd0; kb <= 8'd0; x1b <= 8'd0;
+            bbar_r <= 8'd0; hnew_r <= 8'd0; g_r <= 8'd0;
             wb0 <= 8'd0; wb1 <= 8'd0; wr_idx <= 1'b0;
             best <= 18'sd0; best_ix <= 8'd0; abar_r <= 8'd0;
             emit_cnt <= 3'd0;
@@ -731,9 +741,20 @@ module sequencer (
                     state  <= S_SC_N2;
                 end
                 S_SC_N2: begin
+                    bbar_r <= sa_mulout;           // rr(delta*B[n], S_DB)
+                    state  <= S_SC_N3;
+                end
+                S_SC_N3: begin
+                    state  <= S_SC_N4;             // p_r latched this edge
+                end
+                S_SC_N4: begin
                     rf_we    <= 1'b1;
                     rf_waddr <= 6'd16 + {2'b00, n_idx[3:0]};
                     rf_wdata <= sa_hnew;
+                    hnew_r   <= sa_hnew;
+                    state    <= S_SC_N5;
+                end
+                S_SC_N5: begin
                     if (n_idx[3:0] == d_state[3:0] - 4'd1) begin
                         n_idx <= 5'd0;
                         state <= S_SC_HWR;
@@ -787,13 +808,19 @@ module sequencer (
                     state   <= S_RD_ISSUE;
                 end
                 S_GT_CALC: begin
+                    g_r   <= pwl_y;                // silu(z[j])
+                    state <= S_GT_C2;
+                end
+                S_GT_C2: begin
                     rf_we    <= 1'b1;
                     rf_waddr <= {2'b00, col[3:0]};
-                    rf_wdata <= sa_mulout;         // sat8(rr(y*silu(z), S_G))
-                    if (col[3:0] == 4'd15)
+                    rf_wdata <= sa_mulout;         // sat8(rr(y*g_r, S_G))
+                    if (col[3:0] == 4'd15) begin
                         state <= S_GT_WR;
-                    else
-                        col <= col + 8'd1;
+                    end else begin
+                        col   <= col + 8'd1;
+                        state <= S_GT_CALC;
+                    end
                 end
                 S_GT_WR: begin
                     p_addr  <= scratch_base + {7'd0, SC_Y} + ({14'd0, row} << 0);
@@ -945,7 +972,7 @@ module sequencer (
     // ret2 reserved for nested subroutines (unused today)
     wire _unused = &{1'b0, ret2, sa_mulp, va_sum[8], token_in[7], p_addr[0],
                      cols[5:0], layer[15:8], cmd_ready, sa_yacc,
-                     d_inner[15:8], vocab[15:9], da_p[16], S_WBPAIR};
+                     d_inner[15:8], vocab[15:9], S_WBPAIR};
 
 endmodule
 

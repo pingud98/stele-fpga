@@ -89,6 +89,23 @@ async def test_ternary_mac_random_rows(dut):
 
 
 # ---------------------------------------------------------------- scan ALU
+async def h_update(dut, ab, hv, bb, u):
+    """Two-step h update through the shared multiplier: latch abar*h, then
+    present bbar*u and read h_new (as the sequencer does in S_SC_N3/N4)."""
+    from cocotb.triggers import RisingEdge
+    dut.mula.value = ab
+    dut.mulb.value = hv & 0xFF
+    dut.mula_unsigned.value = 1
+    dut.p_latch.value = 1
+    await RisingEdge(dut.clk)
+    dut.p_latch.value = 0
+    dut.mula.value = bb & 0xFF
+    dut.mulb.value = u & 0xFF
+    dut.mula_unsigned.value = 0
+    await Timer(1, "ns")
+    return int(dut.h_new.value)
+
+
 @cocotb.test()
 async def test_scan_h_update(dut):
     """h_new = sat8(rr(abar*h + bbar*u, 7)) — random + corner cases."""
@@ -99,15 +116,10 @@ async def test_scan_h_update(dut):
     cases += [(random.randrange(256), random.randrange(-128, 128),
                random.randrange(-128, 128), random.randrange(-128, 128))
               for _ in range(400)]
-    for ab, h, bb, u in cases:
-        dut.abar.value = ab
-        dut.h_in.value = h & 0xFF
-        dut.bbar.value = bb & 0xFF
-        dut.u_in.value = u & 0xFF
-        await Timer(1, "ns")
-        want = int(rm.sat8(rm.rshift_round(ab * h + bb * u, rm.S_SCAN))) & 0xFF
-        got = int(dut.h_new.value)
-        assert got == want, f"h_new({ab},{h},{bb},{u}): rtl={got} ref={want}"
+    for ab, hv, bb, u in cases:
+        got = await h_update(dut, ab, hv, bb, u)
+        want = int(rm.sat8(rm.rshift_round(ab * hv + bb * u, rm.S_SCAN))) & 0xFF
+        assert got == want, f"h_new({ab},{hv},{bb},{u}): rtl={got} ref={want}"
 
 
 @cocotb.test()
@@ -147,9 +159,10 @@ async def test_scan_y_accumulator(dut):
         pairs = [(random.randrange(-128, 128), random.randrange(-128, 128))
                  for _ in range(rm.D_STATE)]
         dut.mac_en.value = 1
+        dut.mula_unsigned.value = 0
         for c, h in pairs:
-            dut.mac_a.value = c & 0xFF
-            dut.mac_b.value = h & 0xFF
+            dut.mula.value = c & 0xFF
+            dut.mulb.value = h & 0xFF
             await RisingEdge(dut.clk)
         dut.mac_en.value = 0
         dut.mac_shift.value = rm.S_C
@@ -169,8 +182,9 @@ async def test_scan_worstcase_yacc(dut):
         await RisingEdge(dut.clk)
         dut.mac_clr.value = 0
         dut.mac_en.value = 1
-        dut.mac_a.value = 127
-        dut.mac_b.value = (127 * sign) & 0xFF
+        dut.mula_unsigned.value = 0
+        dut.mula.value = 127
+        dut.mulb.value = (127 * sign) & 0xFF
         for _ in range(16):
             await RisingEdge(dut.clk)
         dut.mac_en.value = 0
@@ -210,17 +224,12 @@ async def test_scan_step_vs_golden_trace(dut):
             await Timer(1, "ns")
             abar = int(dut.pwl_y.value)
             # bbar via mul path
-            dut.mula.value = int(delta[c]) & 0xFF
             dut.mulb.value = int(B[n]) & 0xFF
             dut.mshift.value = rm.S_DB
             await Timer(1, "ns")
-            bbar = int(dut.mul_out.value)
-            # h update
-            dut.abar.value = abar
-            dut.h_in.value = int(h_prev[c][n]) & 0xFF
-            dut.bbar.value = bbar
-            dut.u_in.value = int(u[c]) & 0xFF
-            await Timer(1, "ns")
-            got = s8(int(dut.h_new.value))
+            bbar = s8(int(dut.mul_out.value))
+            # serialized h update
+            got = s8(await h_update(dut, abar, int(h_prev[c][n]), bbar,
+                                    int(u[c])))
             assert got == int(h_want[c][n]), \
                 f"h[{c}][{n}]: rtl={got} golden={int(h_want[c][n])}"

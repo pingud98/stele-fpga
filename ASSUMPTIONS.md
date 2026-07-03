@@ -65,3 +65,21 @@ Every default taken, version pinned, and deviation from the spec. Started 2026-0
   support `--version` cleanly under `pipefail`).
 - No FPGA board attached; `iceprog` is never invoked (runbook §1). Deliverable
   is bitstream + green sims.
+
+## Stage 7 additions
+
+- **UP5K fit**: the full-CSR core initially needed 6001 logic cells (>5280).
+  Reductions applied, all verified bit-exact afterwards: address path
+  32->23 bits (8 MB HyperBus space); ONE shared 8x8 multiplier (scan inner
+  loop serialized to 5 cycles/state-element, gate to 2 cycles/element —
+  ~2.3% cycle-count cost, we are bus-bound); regfile read port c removed,
+  port b halved to rf[0..31]; boot writes to reserved CSRs dropped.
+- **CSR_LITE define (FPGA bitstream build only)**: model dims and memory
+  layout become synthesis constants; only LATENCY, MAX_BURST, N_TOK, CAPTURE
+  remain boot-writable. Changing model shape on the FPGA requires re-synth.
+  Sim and TT builds keep the full 32-register CSR bank (no define).
+- **Clocking (icebreaker)**: 12 MHz osc / 4 = 3 MHz core clock, CK = 750 kHz.
+  icetime ceiling 5.64 MHz; first light deliberately slow per the brief.
+  ~0.4 tokens/s at 3 MHz for the tiny config (4.45 M cycles / 8 tokens).
+- Embedding row indexing assumes D_MODEL=64 (tok<<6) — noted for the future
+  fully-parametric build.

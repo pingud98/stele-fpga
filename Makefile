@@ -30,7 +30,7 @@ build:
 	mkdir -p build
 
 synth: build lint
-	yosys -q -p "read_verilog -Irtl -DICE40 $(RTL_FPGA); \
+	yosys -q -p "read_verilog -Irtl -DICE40 -DCSR_LITE $(RTL_FPGA); \
 	  synth_ice40 -top top_icebreaker -json build/stele.json" \
 	  -l build/synth.log
 	@grep -A 30 "=== top_icebreaker ===" build/synth.log || true
@@ -38,10 +38,10 @@ synth: build lint
 pnr: build
 	nextpnr-ice40 --up5k --package sg48 --json build/stele.json \
 	  --pcf fpga/icebreaker.pcf --asc build/stele.asc \
-	  --freq 12 --report build/pnr_report.json -l build/pnr.log
+	  --freq 3 --report build/pnr_report.json -l build/pnr.log
 
 timing: build
-	icetime -d up5k -P sg48 -c 12 -t -r build/timing.rpt build/stele.asc
+	icetime -d up5k -P sg48 -c 3 -t -r build/timing.rpt build/stele.asc
 	@cat build/timing.rpt
 
 bitstream: build
