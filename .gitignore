@@ -1,0 +1,11 @@
+build/
+sim_build/
+__pycache__/
+*.vcd
+*.fst
+*.pyc
+results.xml
+golden/*.bin
+golden/*.npz
+golden/*.hex
+env.sh
