@@ -81,3 +81,25 @@ Timestamped per-stage log. Operator-facing.
   mul-requant / y-acc vs reference formulas incl. worst-case extremes, and a
   full golden-trace scan channel replayed through the primitives.
 - Next: Stage 5 — sequencer + single-layer FSM (milestone 6).
+
+## 2026-07-03 15:10 — Stage 5: Sequencer + single-layer FSM (milestone 6) — DONE
+
+- `sequencer.v` (microcoded 8-phase layer program + LM head + embed, PH_READ/
+  PH_WRITE subroutine states), `csr.v` (32x16 CSRs + boot stream), `regfile.v`
+  (64-byte working regfile, 3R1W), `addr_gen.v`, `tt_um_stele_ssm.v` (TT top,
+  spec §5 pin map).
+- Design decisions recorded in ASSUMPTIONS.md: HyperBus writes are word-
+  granular (no RWDS masking on TT) -> byte-pair writebacks + conv ring rows
+  padded to 4 B/channel (golden layout updated + regenerated); TMAC streams
+  x per row (regfile stays 64 B); scan channel loop = 2 cycles/state-elem.
+- Bugs caught in review/lint before sim: registered datapath enables lagging
+  their combinationally-muxed operands (made combinational); PWL latch
+  inference; false comb cycle mul<->pwl (dedicated dA multiplier); chunk-count
+  width bug.
+- cocotb `test_top_layer`: **PASS** — CSR boot stream (N_LAYERS=1, N_TOK=1),
+  start-token handshake, one full Mamba block via HyperRAM in 292,541 cycles,
+  bit-exact vs golden trace at x1/z/u/dbc/delta/h/y_gate/res/x_out/ring, and
+  emitted token == numpy argmax. Zero tCSM violations.
+- Synth smoke (yosys, core only): 5365 LUT4, ~1520 FF, 0 BRAM — slightly over
+  UP5K's 5280 LUT4; optimization planned in Stage 7 (flagged per rule §2.7).
+- Next: Stage 6 — full per-token generation (milestone 7).

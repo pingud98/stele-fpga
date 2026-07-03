@@ -73,12 +73,15 @@ SZ_LMHEAD = VOCAB * D_MODEL // 4         # 2048
 OFF_EMBED = OFF_LMHEAD + SZ_LMHEAD
 SZ_EMBED = VOCAB * D_MODEL               # 8192
 
-# State region per-layer offsets
+# State region per-layer offsets. Ring entries are padded to 4 bytes/channel:
+# HyperBus writes are word-granular (the TT pinout cannot drive RWDS as a
+# write mask), so a 3-byte ring row would straddle words.
 ST_H = 0
 SZ_H = D_INNER * D_STATE                 # 2048
 ST_RING = SZ_H
-SZ_RING = D_INNER * (D_CONV - 1)         # 384
-ST_STRIDE = SZ_H + SZ_RING               # 2432 bytes/layer
+RING_STRIDE = 4                          # 3 live bytes + 1 pad
+SZ_RING = D_INNER * RING_STRIDE          # 512
+ST_STRIDE = SZ_H + SZ_RING               # 2560 bytes/layer
 
 # Scratch byte offsets (from SCRATCH_BASE)
 SC_X = 0        # residual stream x, D_MODEL
@@ -263,14 +266,28 @@ def build_image(layers, lm_head, embed):
 CSR_DEFAULTS = {
     0: 6,                       # LATENCY (initial latency, CK cycles)
     1: 16,                      # MAX_BURST (words per transaction)
-    2: 1,                       # CLK_DIV (CK = clk/2)
+    2: 1,                       # CLK_DIV (reserved; PHY fixed at clk/4)
     3: D_MODEL, 4: N_LAYERS, 5: D_INNER, 6: D_STATE, 7: D_CONV,
     8: DT_RANK, 9: VOCAB,
     10: WEIGHTS_BASE & 0xFFFF, 11: WEIGHTS_BASE >> 16,
     12: STATE_BASE & 0xFFFF, 13: STATE_BASE >> 16,
     14: SCRATCH_BASE & 0xFFFF, 15: SCRATCH_BASE >> 16,
     16: N_TOK, 17: BOS, 18: 0,  # PACKING=0 (2-bit/trit)
+    19: 2,                      # CAPTURE (clk from CK edge to DQ sample)
+    20: 0,                      # L_STRIDE  (filled below)
+    21: 0,                      # ST_STRIDE (filled below)
+    22: 0, 23: 0, 24: 0, 25: 0, 26: 0, 27: 0, 28: 0, 29: 0,
 }
+CSR_DEFAULTS[20] = L_STRIDE
+CSR_DEFAULTS[21] = ST_STRIDE
+CSR_DEFAULTS[22] = OFF_CONV
+CSR_DEFAULTS[23] = OFF_WX
+CSR_DEFAULTS[24] = OFF_WDT
+CSR_DEFAULTS[25] = OFF_A
+CSR_DEFAULTS[26] = OFF_WOUT
+CSR_DEFAULTS[27] = OFF_LMHEAD
+CSR_DEFAULTS[28] = OFF_EMBED
+CSR_DEFAULTS[29] = ST_RING
 
 
 def csr_bytes():

@@ -25,9 +25,13 @@ module pwl_nonlin (
     reg  signed [9:0] bsel, msel;
     reg  signed [9:0] ymin, ymax;
 
+    // upper bits of xc/ycl are dead by construction (post-clamp ranges)
+    /* verilator lint_off UNUSEDSIGNAL */
+    reg signed [15:0] xc;
+    /* verilator lint_on UNUSEDSIGNAL */
+
     always @* begin
-        if (sel == 2'd2) begin : exp_dom
-            reg signed [15:0] xc;
+        if (sel == 2'd2) begin
             xc = (xs < -16'sd2048) ? -16'sd2048 :
                  (xs > -16'sd1)    ? -16'sd1    : xs;
             // for xc in [-2048,-1] the low 11 bits equal xc+2048 (0..2047)
@@ -39,8 +43,7 @@ module pwl_nonlin (
             msel = PWL_EXP_M[seg*10 +: 10];
             ymin = 10'sd0;
             ymax = 10'sd127;
-        end else begin : int8_dom
-            reg signed [15:0] xc;
+        end else begin
             xc = (xs < -16'sd128) ? -16'sd128 :
                  (xs > 16'sd127)  ? 16'sd127  : xs;
             u  = {3'b000, xc[7:0] ^ 8'h80};  // xc + 128, 0..255
@@ -71,8 +74,10 @@ module pwl_nonlin (
     wire signed [18:0] ymax_e = {{9{ymax[9]}}, ymax};
     wire signed [18:0] rnd  = prod_e + (19'sd1 <<< (mshift - 4'd1));
     wire signed [18:0] yv   = bsel_e + (rnd >>> mshift);
+    /* verilator lint_off UNUSEDSIGNAL */
     wire signed [18:0] ycl  = (yv < ymin_e) ? ymin_e :
                               (yv > ymax_e) ? ymax_e : yv;
+    /* verilator lint_on UNUSEDSIGNAL */
     assign y = ycl[7:0];
 
 endmodule

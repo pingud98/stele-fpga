@@ -1,0 +1,32 @@
+# icebreaker (iCE40UP5K-SG48) pin constraints for STELE.
+# HyperRAM on PMOD1A (DQ) + PMOD1B (control): wire with short traces,
+# 3.3 V bank, series resistors on CK/DQ (spec §3).
+
+set_io CLK        35   # 12 MHz oscillator
+set_io BTN_N      10   # user button (reset)
+set_io LEDG_N     37   # green LED (busy)
+
+# PMOD1A — HyperRAM DQ[7:0] (token lane when CS# high)
+set_io HRAM_DQ[0]  4   # P1A1
+set_io HRAM_DQ[1]  2   # P1A2
+set_io HRAM_DQ[2] 47   # P1A3
+set_io HRAM_DQ[3] 45   # P1A4
+set_io HRAM_DQ[4]  3   # P1A7
+set_io HRAM_DQ[5] 48   # P1A8
+set_io HRAM_DQ[6] 46   # P1A9
+set_io HRAM_DQ[7] 44   # P1A10
+
+# PMOD1B — HyperRAM control + host handshake
+set_io HRAM_CK    43   # P1B1
+set_io HRAM_CSN   38   # P1B2
+set_io HRAM_RWDS  34   # P1B3
+set_io OUT_VALID  31   # P1B4
+set_io IN_REQ     42   # P1B7
+set_io HOST_DRIVE 36   # P1B8
+set_io IN_VALID   32   # P1B9
+set_io CFG_MODE   28   # P1B10
+
+# PMOD2 — FSM debug (spec: keep for silicon bring-up)
+set_io FSM_DBG[0] 27   # P2_1
+set_io FSM_DBG[1] 25   # P2_2
+set_io FSM_DBG[2] 21   # P2_3
