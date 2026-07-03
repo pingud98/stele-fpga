@@ -8,6 +8,7 @@ RTL  := $(REPO)/rtl
 SIMD := $(REPO)/sim
 
 VERILOG_SOURCES_dq_loopback = $(RTL)/hyperbus_dq_io.v $(SIMD)/tb/tb_dq_loopback.v
+VERILOG_SOURCES_phy = $(RTL)/hyperbus_phy.v $(SIMD)/hyperram_model.v $(SIMD)/tb/tb_phy.v
 
 VERILOG_SOURCES = $(VERILOG_SOURCES_$(TEST))
 COCOTB_TOPLEVEL = tb_$(TEST)

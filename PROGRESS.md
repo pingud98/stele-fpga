@@ -47,3 +47,21 @@ Timestamped per-stage log. Operator-facing.
   OE-turnaround streaming). Verilator lint clean (one benign PROCASSINIT note
   on the sim-only generic path).
 - Next: Stage 3 — HyperBus PHY, milestones 2–4.
+
+## 2026-07-03 13:20 — Stage 3: HyperBus PHY (milestones 2–4) — DONE
+
+- `rtl/hyperbus_phy.v`: SDR-degraded master. CK = clk/4 (setup/edge halves,
+  data centred on every CK edge), CA gen, RWDS sampled once during CA for
+  1x/2x latency, fixed configurable capture offset (cfg_capture, default 2
+  clk), tCSM-aware splitting via cfg_max_burst with re-issued CA, zero-latency
+  register writes. Verilator -Wall clean.
+- Fixed in review before sim: register-write edge budget, wr_ready gating,
+  removed broken zero-latency corner (cfg_latency >= 1 documented).
+- One TB race found (wr_data advanced at falling edge of the consuming cycle);
+  test fixed to advance after the consuming posedge — RTL was correct.
+- cocotb `test_phy`: **9/9 PASS** — ID0 read (1x and 2x latency), CR0
+  write/readback, single-word memory write->readback (both latencies), 16-word
+  burst, 64-word transfer auto-split into 4 transactions (CS# rise counted),
+  negative control proving the tCSM checker fires without splitting, golden
+  image spot-check through the PHY.
+- Next: Stage 4 — datapath primitives (milestone 5).
