@@ -36,10 +36,14 @@ module hyperram_model #(
 );
 
     reg [7:0] mem [0:MEM_BYTES-1];
+    reg [8*160-1:0] img_plusarg;
     integer i;
     initial begin
         for (i = 0; i < MEM_BYTES; i = i + 1) mem[i] = 8'h00;
-        if (IMAGE_FILE != "") $readmemh(IMAGE_FILE, mem);
+        if ($value$plusargs("IMAGE=%s", img_plusarg))
+            $readmemh(img_plusarg, mem);   // per-run override (demos)
+        else if (IMAGE_FILE != "")
+            $readmemh(IMAGE_FILE, mem);
     end
 
     // testbench-pokeable configuration / status

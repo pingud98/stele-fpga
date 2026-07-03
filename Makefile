@@ -6,23 +6,29 @@ RTL_CORE = rtl/tt_um_stele_ssm.v rtl/sequencer.v rtl/csr.v rtl/regfile.v \
            rtl/scan_alu.v rtl/mult_synth.v rtl/pwl_nonlin.v
 RTL_FPGA = fpga/top_icebreaker.v $(RTL_CORE)
 SIM_TESTS = dq_loopback phy datapath top_layer top_full
+DEMO_TESTS = demo_phy demo_tinylm demo_random
 
-.PHONY: setup golden lint sim sim-all synth pnr timing bitstream report all \
-        $(addprefix sim-,$(SIM_TESTS))
+.PHONY: setup golden lint sim sim-all demo synth pnr timing bitstream report all \
+        $(addprefix sim-,$(SIM_TESTS) $(DEMO_TESTS))
 
 setup:
 	./scripts/setup_toolchain.sh
 
 golden:
 	python3 golden/reference_model.py
+	python3 golden/tiny_lm.py
 	cd golden && python3 -m pytest test_reference.py -q
 
 lint:
 	verilator --lint-only -Wall -Irtl $(RTL_CORE) --top-module tt_um_stele_ssm
 
 # static pattern rule: .PHONY targets do not match implicit `sim-%` rules
-$(addprefix sim-,$(SIM_TESTS)): sim-%: lint
+$(addprefix sim-,$(SIM_TESTS) $(DEMO_TESTS)): sim-%: lint
 	$(MAKE) -C sim/tb TEST=$*
+
+# sample operations with reviewable I/O logs in demo/logs/
+demo: $(addprefix sim-,$(DEMO_TESTS))
+	@ls -la demo/logs/
 
 sim-all: $(addprefix sim-,$(SIM_TESTS))
 sim: sim-all

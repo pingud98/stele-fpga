@@ -12,7 +12,10 @@
 //    yacc_q8 = sat8(round_shift(yacc, mac_shift)).
 `default_nettype none
 
-module scan_alu (
+module scan_alu #(
+    parameter USE_DSP = 0   // 1: SB_MAC16 wrapper (FPGA convenience only);
+                            // 0 (default, tested, TT path): mult_synth
+)(
     input  wire        clk,
     input  wire        rst_n,
     // shared multiplier + requant
@@ -34,7 +37,15 @@ module scan_alu (
 );
     localparam S_SCAN = 4'd7;
 
-    mult_synth m (.a(mula), .b(mulb), .a_unsigned(mula_unsigned), .p(mul_p));
+    generate
+        if (USE_DSP) begin : g_dsp
+            mult_dsp m (.a(mula), .b(mulb), .a_unsigned(mula_unsigned),
+                        .p(mul_p));
+        end else begin : g_synth
+            mult_synth m (.a(mula), .b(mulb), .a_unsigned(mula_unsigned),
+                          .p(mul_p));
+        end
+    endgenerate
 
     // ---- generic requant view ------------------------------------------
     wire signed [17:0] gext = {mul_p[16], mul_p};

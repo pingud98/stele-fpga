@@ -150,3 +150,19 @@ Timestamped per-stage log. Operator-facing.
 - Deliverables: green sims through full 8-token generation (bit-exact vs
   golden), routed+timed UP5K design, build/stele.bin — all reproducible via
   `source env.sh && make all`. Stopping per runbook §10; no board programmed.
+
+## 2026-07-04 00:00 — Post-run: system demos + requirements audit — DONE
+
+- `make demo`: three narrated sample-operation runs, logs in demo/logs/:
+  phy_ops.log (6 HyperBus ops), tinylm_generation.log, random_model_generation.log.
+- **Tiny trained LM**: golden/tiny_lm.py — bigram Markov model, MLE-trained on
+  the corpus "fpga works", embedded in the quantised pipeline (one-hot
+  embedding, ternary bigram LM head, layers execute fully with W_out=0).
+  Full-system sim generated 'fpga worksfpga worksf' from prompt 'f' in
+  11,122,100 cycles — bit-exact vs the trained reference, 0 tCSM violations.
+- Requirements audit of both source documents: docs/requirements-check.md
+  (traceability tables; 6 documented gaps, none blocking). Gaps fixed during
+  audit: USE_DSP hook restored in scan_alu (lost in the single-multiplier
+  rewrite), scripts/ci.sh added (spec §11 CI gate incl. §14 area flag),
+  docs/brief.md added per §10 layout, make golden now regenerates the tiny LM.
+- hyperram_model gained a +IMAGE plusarg for per-run image override.

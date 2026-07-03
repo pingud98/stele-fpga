@@ -15,9 +15,17 @@ VERILOG_SOURCES_top_layer = $(CORE_SOURCES) $(SIMD)/hyperram_model.v $(SIMD)/tb/
 VERILOG_SOURCES_top_full = $(CORE_SOURCES) $(SIMD)/hyperram_model.v $(SIMD)/tb/tb_top.v
 COMPILE_ARGS += -I$(RTL)
 
+VERILOG_SOURCES_demo_phy = $(VERILOG_SOURCES_phy)
+VERILOG_SOURCES_demo_tinylm = $(VERILOG_SOURCES_top_full)
+VERILOG_SOURCES_demo_random = $(VERILOG_SOURCES_top_full)
+PLUSARGS_demo_tinylm = +IMAGE=$(REPO)/golden/tinylm_image.hex
+PLUSARGS += $(PLUSARGS_$(TEST))
+
 VERILOG_SOURCES = $(VERILOG_SOURCES_$(TEST))
-ifneq (,$(filter top_layer top_full,$(TEST)))
+ifneq (,$(filter top_layer top_full demo_tinylm demo_random,$(TEST)))
 COCOTB_TOPLEVEL = tb_top
+else ifneq (,$(filter demo_phy,$(TEST)))
+COCOTB_TOPLEVEL = tb_phy
 else
 COCOTB_TOPLEVEL = tb_$(TEST)
 endif

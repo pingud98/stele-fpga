@@ -1,0 +1,43 @@
+STELE — tiny trained language model on the full system (simulation)
+====================================================================
+model    : order-1 Markov (bigram), MLE-trained on corpus 'fpga works'
+           embedded in the quantised SSM pipeline (one-hot embedding,
+           ternary bigram LM head; both Mamba layers execute fully,
+           W_out=0 so the residual stream carries the token through)
+bigram   : ' '->'w' 'a'->' ' 'f'->'p' 'g'->'a' 'k'->'s' 'o'->'r' 'p'->'g' 'r'->'k' 's'->'f' 'w'->'o'
+
+boot     : cfg_mode=1, streamed 64 CSR bytes over uio:
+           00 06 00 10 00 01 00 40 00 02 00 80 00 10 00 04
+           00 04 00 80 00 00 00 00 00 00 00 04 00 00 00 05
+           00 14 00 01 00 00 00 02 25 80 0a 00 10 00 10 80
+           15 00 15 80 1d 80 4b 00 53 00 08 00 00 00 00 00
+input    : host_drive+in_valid, prompt token 6 ('f') on uio
+running  : 20 tokens, autoregressive (embedding -> 2 layers -> LM head argmax per token)...
+
+output   : 20 tokens in 11122100 clk cycles (556105 cycles/token)
+  token[ 0] uio=0x10 ( 16) -> 'p'
+  token[ 1] uio=0x07 (  7) -> 'g'
+  token[ 2] uio=0x01 (  1) -> 'a'
+  token[ 3] uio=0x00 (  0) -> ' '
+  token[ 4] uio=0x17 ( 23) -> 'w'
+  token[ 5] uio=0x0f ( 15) -> 'o'
+  token[ 6] uio=0x12 ( 18) -> 'r'
+  token[ 7] uio=0x0b ( 11) -> 'k'
+  token[ 8] uio=0x13 ( 19) -> 's'
+  token[ 9] uio=0x06 (  6) -> 'f'
+  token[10] uio=0x10 ( 16) -> 'p'
+  token[11] uio=0x07 (  7) -> 'g'
+  token[12] uio=0x01 (  1) -> 'a'
+  token[13] uio=0x00 (  0) -> ' '
+  token[14] uio=0x17 ( 23) -> 'w'
+  token[15] uio=0x0f ( 15) -> 'o'
+  token[16] uio=0x12 ( 18) -> 'r'
+  token[17] uio=0x0b ( 11) -> 'k'
+  token[18] uio=0x13 ( 19) -> 's'
+  token[19] uio=0x06 (  6) -> 'f'
+
+prompt + generated text : 'fpga worksfpga worksf'
+reference (numpy)       : 'fpga worksfpga worksf'
+
+bit-exact vs trained reference : PASS
+tCSM violations                : 0

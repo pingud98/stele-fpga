@@ -1,0 +1,45 @@
+STELE HyperBus PHY — sample operations (simulation)
+PHY <-> behavioural HyperRAM model; clk 50 MHz, CK 12.5 MHz,
+latency 6 CK, capture offset 2 clk, max burst 16 words
+
+----------------------------------------------------------------
+OP 1: ID register read (AS=1, word addr 0x000)
+----------------------------------------------------------------
+  request : READ  reg[0x000], 1 word
+  response: 0c 81  (ID0 = 0x0c81)
+
+----------------------------------------------------------------
+OP 2: ID register read with 2x latency (RWDS high during CA)
+----------------------------------------------------------------
+  request : READ  reg[0x000], 1 word, device signals 2x latency
+  response: 0c 81  (sampled-RWDS path)
+
+----------------------------------------------------------------
+OP 3: CR0 register write (zero latency) + readback
+----------------------------------------------------------------
+  request : WRITE reg[0x800] <= ab cd
+  readback: ab cd
+
+----------------------------------------------------------------
+OP 4: single memory word write -> read-back (DQ turnaround)
+----------------------------------------------------------------
+  request : WRITE mem[word 0x100] <= de ad
+  readback: de ad
+
+----------------------------------------------------------------
+OP 5: 16-word burst write -> burst read (one transaction each)
+----------------------------------------------------------------
+  write   : mem[word 0x400..0x40f] <=
+            4d d0 70 91 0a 60 d5 9e 51 b1 de 6f ac ed ee 66
+            97 37 88 a0 6a e5 ad 3d b2 86 b8 c0 0e c0 81 30
+  readback: 4d d0 70 91 0a 60 d5 9e 51 b1 de 6f ac ed ee 66
+            97 37 88 a0 6a e5 ad 3d b2 86 b8 c0 0e c0 81 30
+
+----------------------------------------------------------------
+OP 6: 64-word transfer, auto-split for tCSM (max_burst=16)
+----------------------------------------------------------------
+  write   : 64 words -> 4 HyperBus transactions (CA re-issued)
+  read    : 64 words -> 4 transactions
+  data ok : True; tCSM violations: 0
+
+all PHY sample operations completed OK

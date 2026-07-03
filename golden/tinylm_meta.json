@@ -1,0 +1,42 @@
+{
+ "corpus": "fpga works",
+ "alphabet": " abcdefghijklmnopqrstuvwxyz",
+ "bigram": {
+  "0": 23,
+  "1": 0,
+  "6": 16,
+  "7": 1,
+  "11": 19,
+  "15": 18,
+  "16": 7,
+  "18": 11,
+  "19": 6,
+  "23": 15
+ },
+ "start_token": 6,
+ "n_gen": 20,
+ "expected_tokens": [
+  6,
+  16,
+  7,
+  1,
+  0,
+  23,
+  15,
+  18,
+  11,
+  19,
+  6,
+  16,
+  7,
+  1,
+  0,
+  23,
+  15,
+  18,
+  11,
+  19,
+  6
+ ],
+ "expected_text": "fpga worksfpga worksf"
+}
