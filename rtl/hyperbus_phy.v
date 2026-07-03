@@ -34,7 +34,7 @@ module hyperbus_phy (
     output wire        cmd_ready,
     input  wire        cmd_write,
     input  wire        cmd_reg,        // register space (AS=1)
-    input  wire [31:0] cmd_addr,       // 16-bit word address
+    input  wire [21:0] cmd_addr,       // 16-bit word address
     input  wire [15:0] cmd_len,        // word count
     // write stream
     input  wire [7:0]  wr_data,
@@ -69,7 +69,7 @@ module hyperbus_phy (
     reg        rwds_q;
     reg [15:0] words_left;    // words remaining across all chunks
     reg [15:0] chunk_left;    // words remaining in current chunk
-    reg [31:0] cur_addr;
+    reg [21:0] cur_addr;
     reg        t_write, t_reg;
     reg [7:0]  cap_sr;        // pending read-capture pulses
     reg [2:0]  csh_cnt;
@@ -101,7 +101,7 @@ module hyperbus_phy (
             phase_edges <= 10'd0;
             words_left <= 16'd0;
             chunk_left <= 16'd0;
-            cur_addr <= 32'd0;
+            cur_addr <= 22'd0;
             t_write <= 1'b0;
             t_reg   <= 1'b0;
             ca_sh   <= 48'd0;
@@ -132,7 +132,8 @@ module hyperbus_phy (
                     hb_csn     <= 1'b0;
                     chunk_left <= this_chunk;
                     ca_sh      <= {~t_write, t_reg, 1'b1,          // R/W#, AS, linear
-                                   cur_addr[31:3], 13'b0, cur_addr[2:0]};
+                                   10'b0, cur_addr[21:3],
+                                   13'b0, cur_addr[2:0]};
                     edge_cnt   <= 5'd0;
                     tick       <= 1'b0;
                     lat2x      <= 1'b0;
@@ -213,7 +214,7 @@ module hyperbus_phy (
                         hb_csn <= 1'b1;
                         // account the chunk just finished
                         words_left <= words_left - chunk_left;
-                        cur_addr   <= cur_addr + {16'd0, chunk_left};
+                        cur_addr   <= cur_addr + {6'd0, chunk_left};
                         csh_cnt    <= 3'd3;
                         state      <= ST_CSH;
                     end

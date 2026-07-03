@@ -73,8 +73,8 @@ module tt_um_stele_ssm (
         .latency(latency), .max_burst(max_burst), .capture(capture),
         .d_model(d_model), .n_layers(n_layers), .d_inner(d_inner),
         .d_state(d_state), .dt_rank(dt_rank), .vocab(vocab),
-        .weights_base(weights_base), .state_base(state_base),
-        .scratch_base(scratch_base), .n_tok(n_tok),
+        .weights_base(weights_base[22:0]), .state_base(state_base[22:0]),
+        .scratch_base(scratch_base[22:0]), .n_tok(n_tok),
         .l_stride(l_stride), .st_stride(st_stride),
         .off_conv(off_conv), .off_wx(off_wx), .off_wdt(off_wdt),
         .off_a(off_a), .off_wout(off_wout), .off_lmhead(off_lmhead),
@@ -92,7 +92,9 @@ module tt_um_stele_ssm (
 
     assign uo_out = {fsm_dbg, busy, in_req, out_valid, hb_csn, hb_ck};
 
-    wire _unused = &{1'b0, ena, ui_in[7:4], boot_done};
+    wire _unused = &{1'b0, ena, ui_in[7:4], boot_done,
+                     weights_base[31:23], state_base[31:23],
+                     scratch_base[31:23]};
 
 endmodule
 

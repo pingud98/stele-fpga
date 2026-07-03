@@ -103,3 +103,21 @@ Timestamped per-stage log. Operator-facing.
 - Synth smoke (yosys, core only): 5365 LUT4, ~1520 FF, 0 BRAM — slightly over
   UP5K's 5280 LUT4; optimization planned in Stage 7 (flagged per rule §2.7).
 - Next: Stage 6 — full per-token generation (milestone 7).
+
+## 2026-07-03 16:20 — Stage 6: Full per-token generation (milestone 7) — DONE
+
+- First full-gen run FAILED (tokens diverged from step 2). Root cause: on the
+  layer boundary S_PHASE_NEXT strobed layer_next and entered S_DISPATCH in the
+  same cycle, so IN_PROJ latched w_row_addr from the *previous* layer's
+  wl_base while later phases used the new one — layer 1 ran with layer 0's
+  in-proj weights. Invisible to the single-layer test by construction. Fixed
+  with a one-cycle S_LADV settle state.
+- Also this stage: address path narrowed 32->23 bits (8 MB HyperRAM space)
+  after synthesis showed 1567 carry cells from ~50 32-bit adders; core LUT4
+  count 5365 -> 4754 (fits UP5K). All suites re-run green after the refactor.
+- cocotb `test_top_full`: **PASS** — CSR boot, 8 tokens autoregressive
+  (embedding lookup + 2 layers + LM head argmax per token) in 4,348,488
+  cycles; tokens, final h (both layers), final conv rings all bit-exact vs
+  trace.npz; zero tCSM violations. Suite totals: dq_loopback 4/4, phy 9/9,
+  datapath 9/9, top_layer 1/1, top_full 1/1. Verilator lint fully clean.
+- Next: Stage 7 — PnR, timing, bitstream.

@@ -37,9 +37,9 @@ module sequencer (
     input  wire [15:0] d_state,
     input  wire [15:0] dt_rank,
     input  wire [15:0] vocab,
-    input  wire [31:0] weights_base,
-    input  wire [31:0] state_base,
-    input  wire [31:0] scratch_base,
+    input  wire [22:0] weights_base,
+    input  wire [22:0] state_base,
+    input  wire [22:0] scratch_base,
     input  wire [15:0] n_tok,
     input  wire [15:0] l_stride,
     input  wire [15:0] st_stride,
@@ -91,13 +91,13 @@ module sequencer (
         S_LM_INIT   = 6'd49, S_EMIT      = 6'd50, S_HALT     = 6'd51,
         S_RD_ISSUE  = 6'd52, S_RD_WAIT   = 6'd53,
         S_WR_ISSUE  = 6'd54, S_WR_WAIT   = 6'd55,
-        S_WBPAIR    = 6'd56;
+        S_WBPAIR    = 6'd56, S_LADV     = 6'd57;
 
     reg [5:0] state, ret, ret2;   // ret2: continuation after S_WBPAIR write
 
     // ---------------- PHY ----------------------------------------------
     reg         cmd_valid, cmd_write, cmd_reg;
-    reg  [31:0] p_addr;          // BYTE address (converted to word addr)
+    reg  [22:0] p_addr;          // BYTE address (converted to word addr)
     reg  [15:0] p_len;
     wire        cmd_ready, wr_ready, rd_valid, phy_done;
     wire [7:0]  rd_data;
@@ -109,7 +109,7 @@ module sequencer (
         .cfg_capture(capture),
         .cmd_valid(cmd_valid), .cmd_ready(cmd_ready),
         .cmd_write(cmd_write), .cmd_reg(cmd_reg),
-        .cmd_addr(p_addr >> 1), .cmd_len(p_len),
+        .cmd_addr(p_addr[22:1]), .cmd_len(p_len),
         .wr_data(wr_data_mux), .wr_ready(wr_ready),
         .rd_data(rd_data), .rd_valid(rd_valid), .done(phy_done),
         .hb_ck(hb_ck), .hb_csn(hb_csn),
@@ -130,7 +130,7 @@ module sequencer (
 
     // ---------------- layer bases --------------------------------------
     reg  layer_rst, layer_next;
-    wire [31:0] wl_base, sl_base;
+    wire [22:0] wl_base, sl_base;
     addr_gen ag (.clk(clk), .rst_n(rst_n),
                  .layer_rst(layer_rst), .layer_next(layer_next),
                  .weights_base(weights_base), .state_base(state_base),
@@ -190,7 +190,7 @@ module sequencer (
     reg [3:0]  q_shift;
     reg [1:0]  nl_mode;          // 0 none, 1 softplus, 2 silu
     reg        am_mode;          // argmax (LM head)
-    reg [31:0] w_row_addr, x_base_a, out_base_a;
+    reg [22:0] w_row_addr, x_base_a, out_base_a;
 
     reg [8:0]  row;              // row / channel counter
     reg [1:0]  chunk;
@@ -339,13 +339,13 @@ module sequencer (
         if (!rst_n) begin
             state <= S_IDLE; ret <= S_IDLE; ret2 <= S_IDLE;
             cmd_valid <= 1'b0; cmd_write <= 1'b0; cmd_reg <= 1'b0;
-            p_addr <= 32'd0; p_len <= 16'd0;
+            p_addr <= 23'd0; p_len <= 16'd0;
             rf_we <= 1'b0; rf_waddr <= 6'd0; rf_wdata <= 8'd0;
             layer_rst <= 1'b0; layer_next <= 1'b0;
             uidx <= 3'd0; layer <= 16'd0; tok_cnt <= 16'd0; cur_tok <= 8'd0;
             rows <= 9'd0; cols <= 8'd0; wrow_bytes <= 8'd0;
             q_shift <= 4'd0; nl_mode <= 2'd0; am_mode <= 1'b0;
-            w_row_addr <= 32'd0; x_base_a <= 32'd0; out_base_a <= 32'd0;
+            w_row_addr <= 23'd0; x_base_a <= 23'd0; out_base_a <= 23'd0;
             row <= 9'd0; chunk <= 2'd0; echunk <= 3'd0; col <= 8'd0;
             n_idx <= 5'd0; rd_cnt <= 8'd0;
             dst <= DST_RF; src <= SRC_RF;
@@ -389,8 +389,8 @@ module sequencer (
 
                 // EMBED: copy embed[cur_tok] -> scratch x, 16B chunks
                 S_EMB_RD: begin
-                    p_addr  <= weights_base + {16'd0, off_embed}
-                               + ({24'd0, cur_tok} << 6) + ({29'd0, echunk} << 4);
+                    p_addr  <= weights_base + {7'd0, off_embed}
+                               + {9'd0, cur_tok, 6'b000000} + {16'd0, echunk, 4'b0000};
                     p_len   <= 16'd8;
                     cmd_write <= 1'b0; cmd_reg <= 1'b0;
                     dst     <= DST_RF; rf_wptr <= 6'd0;
@@ -398,7 +398,7 @@ module sequencer (
                     state   <= S_RD_ISSUE;
                 end
                 S_EMB_WR: begin
-                    p_addr  <= scratch_base + {16'd0, SC_X} + ({29'd0, echunk} << 4);
+                    p_addr  <= scratch_base + {7'd0, SC_X} + {16'd0, echunk, 4'b0000};
                     p_len   <= 16'd8;
                     src     <= SRC_RF; rf_rptr <= 6'd0;
                     ret     <= S_EMB_NEXT;
@@ -423,8 +423,8 @@ module sequencer (
                             wrow_bytes <= d_model[7:0] >> 2;
                             q_shift    <= S_IN; nl_mode <= 2'd0;
                             w_row_addr <= wl_base;
-                            x_base_a   <= scratch_base + {16'd0, SC_X};
-                            out_base_a <= scratch_base + {16'd0, SC_X1};
+                            x_base_a   <= scratch_base + {7'd0, SC_X};
+                            out_base_a <= scratch_base + {7'd0, SC_X1};
                             state      <= S_TM_ROW;
                         end
                         3'd1: begin // CONV
@@ -437,16 +437,16 @@ module sequencer (
                             cols       <= d_inner[7:0];
                             wrow_bytes <= d_inner[7:0] >> 2;
                             q_shift    <= S_XP; nl_mode <= 2'd0;
-                            w_row_addr <= wl_base + {16'd0, off_wx};
-                            x_base_a   <= scratch_base + {16'd0, SC_U};
-                            out_base_a <= scratch_base + {16'd0, SC_DBC};
+                            w_row_addr <= wl_base + {7'd0, off_wx};
+                            x_base_a   <= scratch_base + {7'd0, SC_U};
+                            out_base_a <= scratch_base + {7'd0, SC_DBC};
                             state      <= S_TM_ROW;
                         end
                         3'd3: begin // dt_proj (small rows) + softplus
                             rows       <= {1'b0, d_inner[7:0]};
                             q_shift    <= S_DT; nl_mode <= 2'd1;
-                            w_row_addr <= wl_base + {16'd0, off_wdt};
-                            out_base_a <= scratch_base + {16'd0, SC_DT};
+                            w_row_addr <= wl_base + {7'd0, off_wdt};
+                            out_base_a <= scratch_base + {7'd0, SC_DT};
                             state      <= S_DTS_DTR;
                         end
                         3'd4: begin // SCAN
@@ -462,9 +462,9 @@ module sequencer (
                             cols       <= d_inner[7:0];
                             wrow_bytes <= d_inner[7:0] >> 2;
                             q_shift    <= S_OUT; nl_mode <= 2'd0;
-                            w_row_addr <= wl_base + {16'd0, off_wout};
-                            x_base_a   <= scratch_base + {16'd0, SC_Y};
-                            out_base_a <= scratch_base + {16'd0, SC_RES};
+                            w_row_addr <= wl_base + {7'd0, off_wout};
+                            x_base_a   <= scratch_base + {7'd0, SC_Y};
+                            out_base_a <= scratch_base + {7'd0, SC_RES};
                             state      <= S_TM_ROW;
                         end
                         default: begin // RES_ADD
@@ -482,12 +482,16 @@ module sequencer (
                         if (layer + 16'd1 >= n_layers)
                             state <= S_LM_INIT;
                         else
-                            state <= S_DISPATCH;
+                            state <= S_LADV;
                     end else begin
                         uidx  <= uidx + 3'd1;
                         state <= S_DISPATCH;
                     end
                 end
+
+                // one settle cycle so addr_gen applies the layer stride
+                // BEFORE S_DISPATCH latches w_row_addr from wl_base
+                S_LADV: state <= S_DISPATCH;
 
                 // ---------------------------------------------- TMAC
                 S_TM_ROW: begin
@@ -495,14 +499,14 @@ module sequencer (
                     state  <= S_TM_WREAD;
                 end
                 S_TM_WREAD: begin
-                    p_addr  <= w_row_addr + {26'd0, chunk, 4'b0000};
+                    p_addr  <= w_row_addr + {17'd0, chunk, 4'b0000};
                     p_len   <= 16'd8;
                     dst     <= DST_RF; rf_wptr <= 6'd0;
                     ret     <= S_TM_XREAD;
                     state   <= S_RD_ISSUE;
                 end
                 S_TM_XREAD: begin
-                    p_addr  <= x_base_a + {24'd0, chunk, 6'b000000};
+                    p_addr  <= x_base_a + {15'd0, chunk, 6'b000000};
                     p_len   <= {10'd0, 6'd32};
                     dst     <= DST_MAC; col <= 8'd0;
                     ret     <= S_TM_CHNEXT;
@@ -528,7 +532,7 @@ module sequencer (
                         state <= S_TM_ROWNEXT;
                     end else begin
                         wb1   <= q_nl;
-                        p_addr <= out_base_a + {23'd0, row} - 32'd1;
+                        p_addr <= out_base_a + {14'd0, row} - 23'd1;
                         p_len  <= 16'd1;
                         src    <= SRC_WB; wr_idx <= 1'b0;
                         ret    <= S_TM_ROWNEXT;
@@ -537,7 +541,7 @@ module sequencer (
                 end
                 S_TM_ROWNEXT: begin
                     row        <= row + 9'd1;
-                    w_row_addr <= w_row_addr + {24'd0, wrow_bytes};
+                    w_row_addr <= w_row_addr + {15'd0, wrow_bytes};
                     if (row + 9'd1 >= rows)
                         state <= am_mode ? S_EMIT : S_PHASE_NEXT;
                     else
@@ -546,14 +550,14 @@ module sequencer (
 
                 // ---------------------------------------------- dt_proj
                 S_DTS_DTR: begin
-                    p_addr  <= scratch_base + {16'd0, SC_DBC};
+                    p_addr  <= scratch_base + {7'd0, SC_DBC};
                     p_len   <= 16'd2;
                     dst     <= DST_RF; rf_wptr <= 6'd16;
                     ret     <= S_DTS_CHUNK;
                     state   <= S_RD_ISSUE;
                 end
                 S_DTS_CHUNK: begin
-                    p_addr  <= w_row_addr + {23'd0, row};
+                    p_addr  <= w_row_addr + {14'd0, row};
                     p_len   <= 16'd8;
                     dst     <= DST_RF; rf_wptr <= 6'd0;
                     col     <= 8'd0;
@@ -580,7 +584,7 @@ module sequencer (
                     end
                 end
                 S_DTS_WB: begin
-                    p_addr  <= out_base_a + {23'd0, row};
+                    p_addr  <= out_base_a + {14'd0, row};
                     p_len   <= 16'd8;
                     src     <= SRC_RF; rf_rptr <= 6'd32;
                     ret     <= S_DTS_NEXT;
@@ -596,7 +600,7 @@ module sequencer (
 
                 // ---------------------------------------------- CONV
                 S_CV_KB: begin
-                    p_addr    <= wl_base + {16'd0, off_conv} + ({23'd0, row} & ~32'd1);
+                    p_addr    <= wl_base + {7'd0, off_conv} + ({14'd0, row} & ~23'd1);
                     p_len     <= 16'd1;
                     dst       <= DST_BYTE;
                     byte_lane <= row[0];
@@ -605,14 +609,14 @@ module sequencer (
                     state     <= S_RD_ISSUE;
                 end
                 S_CV_RING: begin
-                    p_addr  <= sl_base + {16'd0, ring_off} + ({23'd0, row} << 2);
+                    p_addr  <= sl_base + {7'd0, ring_off} + ({14'd0, row} << 2);
                     p_len   <= 16'd2;
                     dst     <= DST_RF; rf_wptr <= 6'd0;
                     ret     <= S_CV_X1;
                     state   <= S_RD_ISSUE;
                 end
                 S_CV_X1: begin
-                    p_addr    <= (scratch_base + {16'd0, SC_X1} + {23'd0, row}) & ~32'd1;
+                    p_addr    <= (scratch_base + {7'd0, SC_X1} + {14'd0, row}) & ~23'd1;
                     p_len     <= 16'd1;
                     dst       <= DST_BYTE;
                     byte_lane <= row[0];
@@ -649,7 +653,7 @@ module sequencer (
                         state <= S_CV_RINGWR;
                 end
                 S_CV_RINGWR: begin
-                    p_addr  <= sl_base + {16'd0, ring_off} + ({23'd0, row} << 2);
+                    p_addr  <= sl_base + {7'd0, ring_off} + ({14'd0, row} << 2);
                     p_len   <= 16'd2;
                     src     <= SRC_RF; rf_rptr <= 6'd8;
                     ret     <= S_CV_UWR;
@@ -657,7 +661,7 @@ module sequencer (
                 end
                 S_CV_UWR: begin
                     if (row[0]) begin
-                        p_addr <= scratch_base + {16'd0, SC_U} + {23'd0, row} - 32'd1;
+                        p_addr <= scratch_base + {7'd0, SC_U} + {14'd0, row} - 23'd1;
                         p_len  <= 16'd1;
                         src    <= SRC_WB; wr_idx <= 1'b0;
                         ret    <= S_CV_NEXT;
@@ -675,22 +679,22 @@ module sequencer (
 
                 // ---------------------------------------------- SCAN
                 S_SC_B: begin
-                    p_addr  <= scratch_base + {16'd0, SC_DBC} + {16'd0, dt_rank};
+                    p_addr  <= scratch_base + {7'd0, SC_DBC} + {7'd0, dt_rank};
                     p_len   <= 16'd8;
                     dst     <= DST_RF; rf_wptr <= 6'd32;
                     ret     <= S_SC_C;
                     state   <= S_RD_ISSUE;
                 end
                 S_SC_C: begin
-                    p_addr  <= scratch_base + {16'd0, SC_DBC} + {16'd0, dt_rank}
-                               + ({16'd0, d_state});
+                    p_addr  <= scratch_base + {7'd0, SC_DBC} + {7'd0, dt_rank}
+                               + {7'd0, d_state};
                     p_len   <= 16'd8;
                     dst     <= DST_RF; rf_wptr <= 6'd48;
                     ret     <= S_SC_CH;
                     state   <= S_RD_ISSUE;
                 end
                 S_SC_CH: begin
-                    p_addr    <= (scratch_base + {16'd0, SC_DT} + {23'd0, row}) & ~32'd1;
+                    p_addr    <= (scratch_base + {7'd0, SC_DT} + {14'd0, row}) & ~23'd1;
                     p_len     <= 16'd1;
                     dst       <= DST_BYTE;
                     byte_lane <= row[0];
@@ -699,7 +703,7 @@ module sequencer (
                     state     <= S_RD_ISSUE;
                 end
                 S_SC_U: begin
-                    p_addr    <= (scratch_base + {16'd0, SC_U} + {23'd0, row}) & ~32'd1;
+                    p_addr    <= (scratch_base + {7'd0, SC_U} + {14'd0, row}) & ~23'd1;
                     p_len     <= 16'd1;
                     dst       <= DST_BYTE;
                     byte_lane <= row[0];
@@ -708,14 +712,14 @@ module sequencer (
                     state     <= S_RD_ISSUE;
                 end
                 S_SC_A: begin
-                    p_addr  <= wl_base + {16'd0, off_a} + ({23'd0, row} << 4);
+                    p_addr  <= wl_base + {7'd0, off_a} + ({14'd0, row} << 4);
                     p_len   <= 16'd8;
                     dst     <= DST_RF; rf_wptr <= 6'd0;
                     ret     <= S_SC_H;
                     state   <= S_RD_ISSUE;
                 end
                 S_SC_H: begin
-                    p_addr  <= sl_base + ({23'd0, row} << 4);
+                    p_addr  <= sl_base + ({14'd0, row} << 4);
                     p_len   <= 16'd8;
                     dst     <= DST_RF; rf_wptr <= 6'd16;
                     n_idx   <= 5'd0;
@@ -739,7 +743,7 @@ module sequencer (
                     end
                 end
                 S_SC_HWR: begin
-                    p_addr  <= sl_base + ({23'd0, row} << 4);
+                    p_addr  <= sl_base + ({14'd0, row} << 4);
                     p_len   <= 16'd8;
                     src     <= SRC_RF; rf_rptr <= 6'd16;
                     ret     <= S_SC_Y;
@@ -751,7 +755,7 @@ module sequencer (
                         state <= S_SC_NEXT;
                     end else begin
                         wb1   <= sa_yq8;
-                        p_addr <= scratch_base + {16'd0, SC_Y} + {23'd0, row} - 32'd1;
+                        p_addr <= scratch_base + {7'd0, SC_Y} + {14'd0, row} - 23'd1;
                         p_len  <= 16'd1;
                         src    <= SRC_WB; wr_idx <= 1'b0;
                         ret    <= S_SC_NEXT;
@@ -768,14 +772,14 @@ module sequencer (
 
                 // ---------------------------------------------- GATE
                 S_GT_Y: begin
-                    p_addr  <= scratch_base + {16'd0, SC_Y} + ({23'd0, row} << 0);
+                    p_addr  <= scratch_base + {7'd0, SC_Y} + ({14'd0, row} << 0);
                     p_len   <= 16'd8;
                     dst     <= DST_RF; rf_wptr <= 6'd0;
                     ret     <= S_GT_Z;
                     state   <= S_RD_ISSUE;
                 end
                 S_GT_Z: begin
-                    p_addr  <= scratch_base + {16'd0, SC_Z} + ({23'd0, row} << 0);
+                    p_addr  <= scratch_base + {7'd0, SC_Z} + ({14'd0, row} << 0);
                     p_len   <= 16'd8;
                     dst     <= DST_RF; rf_wptr <= 6'd16;
                     col     <= 8'd0;
@@ -792,7 +796,7 @@ module sequencer (
                         col <= col + 8'd1;
                 end
                 S_GT_WR: begin
-                    p_addr  <= scratch_base + {16'd0, SC_Y} + ({23'd0, row} << 0);
+                    p_addr  <= scratch_base + {7'd0, SC_Y} + ({14'd0, row} << 0);
                     p_len   <= 16'd8;
                     src     <= SRC_RF; rf_rptr <= 6'd0;
                     ret     <= S_GT_NEXT;
@@ -808,14 +812,14 @@ module sequencer (
 
                 // ---------------------------------------------- RES_ADD
                 S_VA_X: begin
-                    p_addr  <= scratch_base + {16'd0, SC_X} + {23'd0, row};
+                    p_addr  <= scratch_base + {7'd0, SC_X} + {14'd0, row};
                     p_len   <= 16'd8;
                     dst     <= DST_RF; rf_wptr <= 6'd0;
                     ret     <= S_VA_R;
                     state   <= S_RD_ISSUE;
                 end
                 S_VA_R: begin
-                    p_addr  <= scratch_base + {16'd0, SC_RES} + {23'd0, row};
+                    p_addr  <= scratch_base + {7'd0, SC_RES} + {14'd0, row};
                     p_len   <= 16'd8;
                     dst     <= DST_RF; rf_wptr <= 6'd16;
                     col     <= 8'd0;
@@ -832,7 +836,7 @@ module sequencer (
                         col <= col + 8'd1;
                 end
                 S_VA_WR: begin
-                    p_addr  <= scratch_base + {16'd0, SC_X} + {23'd0, row};
+                    p_addr  <= scratch_base + {7'd0, SC_X} + {14'd0, row};
                     p_len   <= 16'd8;
                     src     <= SRC_RF; rf_rptr <= 6'd0;
                     ret     <= S_VA_NEXT;
@@ -852,8 +856,8 @@ module sequencer (
                     cols       <= d_model[7:0];
                     wrow_bytes <= d_model[7:0] >> 2;
                     am_mode    <= 1'b1;
-                    w_row_addr <= weights_base + {16'd0, off_lmhead};
-                    x_base_a   <= scratch_base + {16'd0, SC_X};
+                    w_row_addr <= weights_base + {7'd0, off_lmhead};
+                    x_base_a   <= scratch_base + {7'd0, SC_X};
                     row        <= 9'd0;
                     state      <= S_TM_ROW;
                 end
@@ -939,7 +943,7 @@ module sequencer (
     end
 
     // ret2 reserved for nested subroutines (unused today)
-    wire _unused = &{1'b0, ret2, sa_mulp, va_sum[8], token_in[7],
+    wire _unused = &{1'b0, ret2, sa_mulp, va_sum[8], token_in[7], p_addr[0],
                      cols[5:0], layer[15:8], cmd_ready, sa_yacc,
                      d_inner[15:8], vocab[15:9], da_p[16], S_WBPAIR};
 
