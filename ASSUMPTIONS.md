@@ -43,8 +43,16 @@ Every default taken, version pinned, and deviation from the spec. Started 2026-0
 
 - Activations/state `h`: int8. Accumulators: int32.
 - Requantisation: arithmetic right shift with round-to-nearest (add half-LSB
-  before shift), then saturate to int8. Per-tensor shift constants recorded in
-  the CSR config / golden header.
+  before shift), then saturate to int8. Shift constants are part of the
+  fixed-point spec (baked into RTL localparams and the reference identically):
+  `S_IN=3, S_CONV=1, S_XP=2, S_DT=1, S_DB=4, S_SCAN=7, S_C=6, S_G=5, S_OUT=3`.
+  Chosen from signal statistics of the seeded-random model so every stage
+  keeps live int8 range (<1% saturation); an earlier worst-case-sized choice
+  drove all activations to zero.
+- A matrix: int8 in [-32,-2] (Q3.4, i.e. -2.0..-0.125) so Ā spans a useful
+  decay range. dt_proj bias omitted; no RMSNorm (spec never budgets one);
+  D-skip term omitted; residual add x+block(x) included; SiLU applied after
+  conv (as in Mamba). DT_RANK=4.
 - Δ, B, C: int8 after their projections; Ā ("A-bar") = PWL exp result in
   **Q0.7 unsigned** (0..127 ≈ 0..0.992).
 - PWL tables: 8 segments per function (softplus, exp(x) for x≤0, SiLU),
