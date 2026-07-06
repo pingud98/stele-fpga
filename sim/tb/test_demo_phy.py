@@ -43,7 +43,7 @@ async def demo_phy_operations(dut):
     data = await run_read(dut, 0x0, 1, reg=True)
     log.w(f"  request : READ  reg[0x000], 1 word")
     log.w(f"  response: {hx(data)}  (ID0 = 0x{data[0]:02x}{data[1]:02x})")
-    assert (data[0] << 8) | data[1] == 0x0C81
+    assert (data[0] << 8) | data[1] == 0x0C83
 
     log.op("OP 2: ID register read with 2x latency (RWDS high during CA)")
     dut.hram.cfg_extra_latency.value = 1
@@ -51,7 +51,7 @@ async def demo_phy_operations(dut):
     dut.hram.cfg_extra_latency.value = 0
     log.w(f"  request : READ  reg[0x000], 1 word, device signals 2x latency")
     log.w(f"  response: {hx(data)}  (sampled-RWDS path)")
-    assert (data[0] << 8) | data[1] == 0x0C81
+    assert (data[0] << 8) | data[1] == 0x0C83
 
     log.op("OP 3: CR0 register write (zero latency) + readback")
     log.w(f"  request : WRITE reg[0x800] <= ab cd")

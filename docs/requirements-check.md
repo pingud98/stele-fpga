@@ -21,7 +21,7 @@ documented limitation · **DEFERRED** = explicitly out of this phase's scope
 | Requirement | Status | Evidence |
 |---|---|---|
 | UP5K-SG48 icebreaker target | DONE | PnR at `--up5k --package sg48` |
-| 3.3 V HyperRAM part confirmed (single-ended CK) | DEFERRED (human) | REPORT §5.1 — open decision §15.1; generic model used |
+| 3.3 V HyperRAM part confirmed (single-ended CK) | DONE | ISSI IS66WVH8M8 confirmed 2026-07-06; model IDs updated (ID0=0x0C83); single-ended CK confirmed |
 | Inferred EBR where possible / explicit SB_IO, PLL | PARTIAL | zero EBR by design (§14 wins over "where possible"); SB_IO explicit in `hyperbus_dq_io.v`; PLL not needed (÷4 divider), icepll path documented |
 | cocotb + Icarus; Python golden comparison | DONE | all suites |
 | Verilator --lint-only in CI | DONE | `make lint` (-Wall, clean); `scripts/ci.sh` |
@@ -90,7 +90,7 @@ is at repo root (not `fpga/Makefile`) covering the whole flow.
 | Requirement | Status | Evidence |
 |---|---|---|
 | External PyTorch model | SUPERSEDED | runbook §4; plus `tiny_lm.py` trained (bigram-MLE) demo model |
-| HyperRAM part fixed early | DEFERRED (human) | §15.1, REPORT §5 |
+| HyperRAM part fixed early | DONE | IS66WVH8M8 confirmed 2026-07-06 |
 | Single clock domain; document any CDC | DONE | one domain; RWDS sampled through a synchronous register (`rwds_q`), no async capture, no CDC |
 
 ### §13 Bring-up milestones
@@ -110,7 +110,9 @@ REPORT §5. "Freeze nothing for TT GDS until M3 on real hardware": respected.
 | ~8–12 TT tiles; flag in CI if trending above | PARTIAL — flagged: ~4.1k LUT + 1.5k FF trends high (REPORT §2); ci.sh carries the area flag |
 
 ### §15/§16 Open decisions & first tasks
-All §15 decisions pinned per runbook §5 and recorded in ASSUMPTIONS.md.
+All four §15 decisions **confirmed by James 2026-07-06** (IS66WVH8M8;
+2-bit/trit packing; 7-bit vocab, VOCAB=128; tiny default dims) — matching
+the pinned runbook defaults, now recorded as confirmed in ASSUMPTIONS.md.
 All §16 first tasks completed in order.
 
 ## Runbook (stele-fpga-bringup-brief.md)

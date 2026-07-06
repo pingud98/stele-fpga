@@ -71,11 +71,11 @@ async def run_write(dut, addr, payload, reg=False, timeout=200000):
 # ---------------------------------------------------------------- milestone 2
 @cocotb.test()
 async def test_m2_id_register_read(dut):
-    """Config-register read: ID0 must return 0x0c81."""
+    """Config-register read: ID0 must return 0x0c83 (ISSI IS66WVH8M8)."""
     await setup(dut)
     data = await run_read(dut, 0x0, 1, reg=True)
     word = (data[0] << 8) | data[1]
-    assert word == 0x0C81, f"ID0 = {word:#06x}"
+    assert word == 0x0C83, f"ID0 = {word:#06x}"
     assert int(dut.hram.err_count.value) == 0
 
 
@@ -87,7 +87,7 @@ async def test_m2_id_read_2x_latency(dut):
     data = await run_read(dut, 0x0, 1, reg=True)
     dut.hram.cfg_extra_latency.value = 0
     word = (data[0] << 8) | data[1]
-    assert word == 0x0C81, f"ID0 with 2x latency = {word:#06x}"
+    assert word == 0x0C83, f"ID0 with 2x latency = {word:#06x}"
     assert int(dut.hram.err_count.value) == 0
 
 

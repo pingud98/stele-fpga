@@ -1,5 +1,6 @@
 // hyperram_model — behavioural HyperBus RAM for simulation (the contract the
-// PHY is verified against). Generic 3.3 V x8 part, ISSI IS66WVH-class.
+// PHY is verified against). Models the confirmed part: ISSI IS66WVH8M8
+// (64 Mbit, 3.3 V, x8, single-ended CK, tCSM 4 us, default latency 6).
 //
 // Protocol contract (SDR-degraded mode; edges are CK edges, both polarities,
 // numbered from 1 = first CK edge after CS# falls):
@@ -15,7 +16,7 @@
 //                     (this PHY never drives RWDS - TT maps it input-only).
 //   tCSM            : CS# low longer than TCSM_NS raises $error, err_count++.
 //
-// Register space (AS=1): word addr 0x0 = ID0 (0x0c81), 0x1 = ID1, 0x800 = CR0
+// Register space (AS=1): word addr 0x0 = ID0 (0x0c83), 0x1 = ID1 (0x0001), 0x800 = CR0
 // (writable, readable). Memory space: mem[], loaded from IMAGE_FILE ($readmemh,
 // one byte per line) when non-empty.
 //
@@ -49,7 +50,7 @@ module hyperram_model #(
     // testbench-pokeable configuration / status
     reg        cfg_extra_latency = 1'b0;
     integer    err_count = 0;
-    reg [15:0] cr0 = 16'h8f1f;
+    reg [15:0] cr0 = 16'h8f1f;   // to verify against IS66WVH8M8 CR0 default on silicon
 
     // transaction state
     reg [47:0] ca = 48'h0;
@@ -74,8 +75,11 @@ module hyperram_model #(
         reg [15:0] w;
         begin
             case (a)
-                32'h000: w = 16'h0c81;   // ID0
-                32'h001: w = 16'h0000;   // ID1
+                // IS66WVH8M8: mfg 0x3 (ISSI), 13 row / 9 column bits.
+                // Derived from ISSI HyperBus docs — verify at the first
+                // real silicon ID read (hardware milestone 2).
+                32'h000: w = 16'h0c83;   // ID0
+                32'h001: w = 16'h0001;   // ID1 (HyperRAM 2.0)
                 32'h800: w = cr0;        // CR0
                 default: w = 16'h0000;
             endcase

@@ -6,13 +6,13 @@ latency 6 CK, capture offset 2 clk, max burst 16 words
 OP 1: ID register read (AS=1, word addr 0x000)
 ----------------------------------------------------------------
   request : READ  reg[0x000], 1 word
-  response: 0c 81  (ID0 = 0x0c81)
+  response: 0c 83  (ID0 = 0x0c83)
 
 ----------------------------------------------------------------
 OP 2: ID register read with 2x latency (RWDS high during CA)
 ----------------------------------------------------------------
   request : READ  reg[0x000], 1 word, device signals 2x latency
-  response: 0c 81  (sampled-RWDS path)
+  response: 0c 83  (sampled-RWDS path)
 
 ----------------------------------------------------------------
 OP 3: CR0 register write (zero latency) + readback

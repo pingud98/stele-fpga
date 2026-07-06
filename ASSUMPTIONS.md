@@ -23,7 +23,7 @@ Every default taken, version pinned, and deviation from the spec. Started 2026-0
 | Item | Value |
 |---|---|
 | HyperRAM behavioural model | Generic 3.3 V x8 HyperBus, ISSI IS66WVH-class; CSR-configurable fixed read latency (default 6 clocks); tCSM = 4 µs enforced by assertion in the model |
-| Ternary packing | 2 bits/trit, 4 trits/byte (`00`=0, `01`=+1, `10`=−1, `11`=illegal→treated as 0); `PACKING` parameter hook left for 5-trit/byte |
+| Ternary packing | **CONFIRMED 2026-07-06**: 2 bits/trit, 4 trits/byte (`00`=0, `01`=+1, `10`=−1, `11`=illegal→treated as 0); `PACKING` parameter hook left for 5-trit/byte |
 | Vocabulary | `VOCAB=128` (7-bit tokens, single-beat token I/O) |
 | Sim model dims | `D_MODEL=64, N_LAYERS=2, D_STATE=16, D_CONV=4, E=2` (D_INNER=128) |
 | Clock | Single domain; PHY CK = clk/2 via `CLK_DIV` (CSR) |

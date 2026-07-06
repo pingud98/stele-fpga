@@ -78,10 +78,10 @@ smaller), regfile port/mux narrowing, and address-adder sharing.
 
 ## 5. Hardware-readiness / handoff (human steps)
 
-1. **Confirm the HyperRAM part** (spec §15.1: ISSI IS66WVH8M8 or Infineon
-   S27KL0641, 3.3 V, single-ended CK). If timings differ from the generic
-   model (latency 6, tCSM 4 µs), adjust `sim/hyperram_model.v` parameters
-   and the CSR defaults, re-run `make all`.
+1. ~~Confirm the HyperRAM part~~ **CONFIRMED 2026-07-06: ISSI IS66WVH8M8**
+   (3.3 V, x8, single-ended CK; latency 6; tCSM 4 µs). The behavioural model
+   and milestone-2 tests now carry its identity (ID0=0x0C83 — derived from
+   ISSI documentation; verify at the first real silicon ID read).
 2. **Wire HyperRAM to the icebreaker**: DQ on PMOD1A, CK/CS#/RWDS on PMOD1B
    per `fpga/icebreaker.pcf`; short traces, 3.3 V bank, series resistors on
    CK/DQ. Program `build/stele.bin` (`iceprog build/stele.bin`).
