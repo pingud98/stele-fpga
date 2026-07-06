@@ -83,8 +83,19 @@ Every default taken, version pinned, and deviation from the spec. Started 2026-0
   ~0.4 tokens/s at 3 MHz for the tiny config (4.45 M cycles / 8 tokens).
 - Embedding row indexing assumes D_MODEL=64 (tok<<6) — noted for the future
   fully-parametric build.
-- **tCSM/Fmax gap (key finding)**: real HyperRAM tCSM (4 us) implies core
-  clk >= 16 MHz for array accesses in the CK=clk/4 scheme; datapath ceiling
-  is 5.64 MHz. Register-space reads (milestone 2 / first light) are
-  unaffected. Documented in REPORT.md §5; resolving it (pipelining or a
-  CK=clk/2 PHY variant) is deferred to the hardware phase.
+- **tCSM/Fmax gap — RESOLVED 2026-07-06** (James's decision: clk/2 PHY +
+  pipeline to 12 MHz):
+  - PHY rewritten to one byte per clk (CK = clk/2). hb_ck is the design's
+    only negedge register, so DQ transitions land half a clk before every CK
+    edge (centre-aligned writes) — still SDR logic, no DDR primitives, no
+    calibrated delays. CK never pauses mid-transaction.
+  - Datapath pipelined: shared-multiplier product registered (mul_pq), PWL
+    input registered, q8-requant staged before the PWL, mul_out requant
+    reduced to the two fixed shifts that exist (S_DB=4, S_G=5), ternary-MAC
+    requant shift narrowed to 2 bits. Present/consume state pairs added in
+    SCAN/GATE/DTS/CONV loops (~1% cycle cost; bus-bound).
+  - Defaults: CAPTURE=1, MAX_BURST=8 (an 8-word transaction at CK 6 MHz is
+    ~2.9 us < tCSM 4 us on IS66WVH8M8).
+  - icebreaker runs directly at the 12 MHz oscillator (no PLL, no divider);
+    routed Fmax 12.9 MHz, icetime 12.37 MHz. Net throughput ~2x per clock
+    plus 4x clock: full 8-token generation 3.42 M cycles (was 4.45 M).

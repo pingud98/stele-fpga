@@ -1,24 +1,30 @@
 // hyperbus_phy — SDR-degraded HyperBus master (the TT-faithful critical block).
 //
-// Scheme: internal clk only. CK toggles every 2 clk (CK = clk/4); one byte per
-// CK edge. DQ/OE update on the clk cycle BEFORE each edge (tick=0 "setup",
-// tick=1 "edge"), so outputs are stable a full clk around every CK edge and
-// the slave's DDR capture sees centred data. Reads are captured from the
-// externally registered dq_in at a fixed, configurable offset (cfg_capture
-// clk cycles) after each generated edge — RWDS is sampled once during the CA
-// phase for the latency count (1x/2x) and never used as a capture strobe.
+// Clocking (clk/2 scheme): one byte per clk cycle; CK = clk/2. DQ and all
+// controls update on POSEDGE clk; hb_ck is the design's only negedge
+// register, toggling half a cycle later — so outputs are stable half a clk
+// either side of every CK edge (centre-aligned, as HyperBus masters must
+// drive writes), and read data driven by the slave on a CK edge is sampled
+// by the externally registered dq_in at the following posedge. Still SDR
+// from the logic's point of view: one transfer per CK edge, no DDR capture
+// primitives, no calibrated delays. RWDS is sampled once during the CA
+// phase for the 1x/2x latency count and never used as a capture strobe;
+// reads are captured at a fixed configurable offset (cfg_capture clk cycles,
+// default 1) after each edge cycle.
 //
 // Edge numbering matches sim/hyperram_model.v: CA on edges 1..6; first data
 // byte on edge 7 + 2*T (T = cfg_latency, doubled when RWDS was high during
 // CA; T = 0 for register writes); one byte per edge, words big-endian.
 //
 // tCSM: transfers longer than cfg_max_burst words are split into multiple
-// transactions with re-issued CA (address advances), CS# high between them.
+// transactions with re-issued CA. At 12 MHz clk (CK 6 MHz) the default
+// max_burst=8 keeps every transaction under ~3 us (IS66WVH8M8 tCSM = 4 us).
 //
 // Command interface: pulse cmd_valid with cmd_* held; PHY latches when
-// cmd_ready. Write bytes are consumed one per wr_ready pulse (the provider
-// must always be able to supply the next byte). Read bytes appear as
-// rd_valid/rd_data pulses. done pulses once after the final chunk.
+// cmd_ready. Write bytes are consumed one per wr_ready cycle (one per clk
+// during data; the provider must keep up). Read bytes appear as
+// rd_valid/rd_data pulses (one per clk). done pulses once after the final
+// chunk.
 
 `default_nettype none
 
@@ -26,9 +32,9 @@ module hyperbus_phy (
     input  wire        clk,
     input  wire        rst_n,
     // configuration (from CSRs)
-    input  wire [3:0]  cfg_latency,    // initial latency, CK cycles
+    input  wire [3:0]  cfg_latency,    // initial latency, CK cycles (>= 1)
     input  wire [7:0]  cfg_max_burst,  // words per transaction (tCSM guard)
-    input  wire [2:0]  cfg_capture,    // clk cycles from CK edge to capture
+    input  wire [2:0]  cfg_capture,    // clk cycles from edge cycle to capture
     // command
     input  wire        cmd_valid,
     output wire        cmd_ready,
@@ -44,7 +50,7 @@ module hyperbus_phy (
     output wire        rd_valid,
     output reg         done,
     // pads (registered here; top maps to uio/uo)
-    output reg         hb_ck,
+    output reg         hb_ck,          // negedge-clocked (see header)
     output reg         hb_csn,
     output reg  [7:0]  dq_out,
     output reg         dq_oe,
@@ -53,71 +59,84 @@ module hyperbus_phy (
 );
 
     localparam [2:0] ST_IDLE  = 3'd0,
-                     ST_CSS   = 3'd1,   // CS# asserted, pre-CK gap
-                     ST_CA    = 3'd2,
-                     ST_LAT   = 3'd3,
-                     ST_DATA  = 3'd4,
-                     ST_DRAIN = 3'd5,
+                     ST_CSS   = 3'd1,   // CS# assert + first CA byte setup
+                     ST_CA    = 3'd2,   // 6 edge cycles
+                     ST_LAT   = 3'd3,   // 2*T edge cycles, bus released
+                     ST_DATA  = 3'd4,   // 2*W edge cycles
+                     ST_DRAIN = 3'd5,   // captures land, then CS# high
                      ST_CSH   = 3'd6;   // CS# high between chunks
 
     reg [2:0]  state;
-    reg        tick;          // 0 = setup cycle, 1 = edge cycle
-    reg [47:0] ca_sh;
-    reg [4:0]  edge_cnt;      // edges within CA (1..6)
-    reg [9:0]  phase_edges;   // edges remaining in LAT/DATA phase
+    reg [39:0] ca_sh;          // remaining CA bytes after the first
+    reg [2:0]  edge_cnt;       // CA edge cycles 1..6
+    reg [9:0]  phase_edges;    // edge cycles remaining in LAT/DATA
     reg        lat2x;
     reg        rwds_q;
-    reg [15:0] words_left;    // words remaining across all chunks
-    reg [15:0] chunk_left;    // words remaining in current chunk
+    reg [15:0] words_left;
+    reg [15:0] chunk_left;
     reg [21:0] cur_addr;
     reg        t_write, t_reg;
-    reg [7:0]  cap_sr;        // pending read-capture pulses
+    reg [7:0]  cap_sr;         // pending read-capture markers
     reg [2:0]  csh_cnt;
 
-    wire [4:0] lat_total = {1'b0, cfg_latency} << lat2x;  // 0..30 CK cycles
+    wire [4:0] lat_total = {1'b0, cfg_latency} << lat2x;
 
     assign cmd_ready = (state == ST_IDLE);
-    assign wr_ready  = (state == ST_DATA) && t_write && !tick;
     assign rd_valid  = cap_sr[cfg_capture];
     assign rd_data   = dq_in;
+    // one write byte consumed per posedge that loads dq_out with stream
+    // data: the first byte loads at the last CA (reg write) or last latency
+    // cycle, so CK never pauses mid-transaction
+    assign wr_ready  = t_write &&
+                       ((state == ST_CA  && edge_cnt == 3'd6 && t_reg) ||
+                        (state == ST_LAT && phase_edges == 10'd1) ||
+                        (state == ST_DATA && phase_edges != 10'd1));
 
-    // next chunk size
     wire [15:0] this_chunk = (words_left > {8'h00, cfg_max_burst})
                              ? {8'h00, cfg_max_burst} : words_left;
 
+    // full CA word, available during ST_CSS (operands latched in ST_IDLE)
+    wire [47:0] ca_full = {~t_write, t_reg, 1'b1,
+                           10'b0, cur_addr[21:3],
+                           13'b0, cur_addr[2:0]};
+
+    // CK: the only negedge register — toggles half a cycle after the data
+    // posedge of every edge cycle. Edge counts per chunk are even, so CK
+    // always parks low.
+    wire ck_en = (state == ST_CA) || (state == ST_LAT) || (state == ST_DATA);
+    always @(negedge clk or negedge rst_n) begin
+        if (!rst_n)      hb_ck <= 1'b0;
+        else if (ck_en)  hb_ck <= ~hb_ck;
+    end
+
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
-            state   <= ST_IDLE;
-            tick    <= 1'b0;
-            hb_ck   <= 1'b0;
-            hb_csn  <= 1'b1;
-            dq_out  <= 8'h00;
-            dq_oe   <= 1'b0;
-            done    <= 1'b0;
-            cap_sr  <= 8'h00;
-            rwds_q  <= 1'b0;
-            lat2x   <= 1'b0;
-            edge_cnt <= 5'd0;
+            state <= ST_IDLE;
+            hb_csn <= 1'b1;
+            dq_out <= 8'h00;
+            dq_oe  <= 1'b0;
+            done   <= 1'b0;
+            cap_sr <= 8'h00;
+            rwds_q <= 1'b0;
+            lat2x  <= 1'b0;
+            edge_cnt <= 3'd0;
             phase_edges <= 10'd0;
             words_left <= 16'd0;
             chunk_left <= 16'd0;
             cur_addr <= 22'd0;
             t_write <= 1'b0;
             t_reg   <= 1'b0;
-            ca_sh   <= 48'd0;
+            ca_sh   <= 40'd0;
             csh_cnt <= 3'd0;
         end else begin
             done   <= 1'b0;
             rwds_q <= rwds_in;
-            // read-capture delay line (bit 0 set on read data edges)
             cap_sr <= {cap_sr[6:0], 1'b0};
 
             case (state)
                 ST_IDLE: begin
                     hb_csn <= 1'b1;
-                    hb_ck  <= 1'b0;
                     dq_oe  <= 1'b0;
-                    tick   <= 1'b0;
                     if (cmd_valid) begin
                         t_write    <= cmd_write;
                         t_reg      <= cmd_reg;
@@ -127,92 +146,74 @@ module hyperbus_phy (
                     end
                 end
 
-                // start a chunk: assert CS#, give one clk of tCSS
+                // assert CS# and present the first CA byte on the same edge;
+                // its CK edge follows half a cycle into the first CA cycle
                 ST_CSS: begin
                     hb_csn     <= 1'b0;
+                    dq_out     <= ca_full[47:40];
+                    dq_oe      <= 1'b1;
+                    ca_sh      <= ca_full[39:0];
                     chunk_left <= this_chunk;
-                    ca_sh      <= {~t_write, t_reg, 1'b1,          // R/W#, AS, linear
-                                   10'b0, cur_addr[21:3],
-                                   13'b0, cur_addr[2:0]};
-                    edge_cnt   <= 5'd0;
-                    tick       <= 1'b0;
+                    edge_cnt   <= 3'd1;
                     lat2x      <= 1'b0;
                     state      <= ST_CA;
                 end
 
                 ST_CA: begin
-                    tick <= ~tick;
-                    if (!tick) begin
-                        // setup: present next CA byte
-                        dq_out <= ca_sh[47:40];
-                        ca_sh  <= {ca_sh[39:0], 8'h00};
-                        dq_oe  <= 1'b1;
-                    end else begin
-                        // edge
-                        hb_ck    <= ~hb_ck;
-                        edge_cnt <= edge_cnt + 5'd1;
-                        if (edge_cnt == 5'd3)
-                            lat2x <= rwds_q;   // sampled RWDS latency indication
-                        if (edge_cnt == 5'd5) begin
-                            // 6th edge issued this cycle; CA done
-                            if (t_write && t_reg) begin
-                                // register write: zero latency
-                                phase_edges <= {chunk_left[8:0], 1'b0};
-                                state       <= ST_DATA;
-                            end else begin
-                                state <= ST_LAT;
-                            end
+                    // edge for the presented byte occurs mid-cycle; present
+                    // the next byte at this ending posedge
+                    dq_out <= ca_sh[39:32];
+                    ca_sh  <= {ca_sh[31:0], 8'h00};
+                    edge_cnt <= edge_cnt + 3'd1;
+                    if (edge_cnt == 3'd4)
+                        lat2x <= rwds_q;    // sampled-RWDS latency indication
+                    if (edge_cnt == 3'd6) begin
+                        if (t_write && t_reg) begin
+                            // register write: zero latency; first data byte
+                            // replaces the (dead) 7th CA shift byte
+                            dq_out      <= wr_data;
+                            phase_edges <= {chunk_left[8:0], 1'b0};
+                            state       <= ST_DATA;
+                        end else begin
+                            phase_edges <= {4'd0, lat_total, 1'b0}; // 2*T
+                            dq_oe       <= 1'b0;                    // turnaround
+                            state       <= ST_LAT;
                         end
                     end
                 end
 
                 ST_LAT: begin
-                    tick <= ~tick;
-                    if (!tick) begin
-                        dq_oe <= 1'b0;                     // bus turnaround
-                        // load edge budget on first setup cycle of the phase
-                        if (phase_edges == 10'd0)
-                            phase_edges <= {5'd0, lat_total} << 1;
-                    end else begin
-                        hb_ck <= ~hb_ck;
-                        phase_edges <= phase_edges - 10'd1;
-                        if (phase_edges == 10'd1) begin
-                            phase_edges <= {chunk_left[8:0], 1'b0};
-                            state       <= ST_DATA;
+                    phase_edges <= phase_edges - 10'd1;
+                    if (phase_edges == 10'd1) begin
+                        phase_edges <= {chunk_left[8:0], 1'b0};
+                        if (t_write) begin
+                            dq_out <= wr_data;   // byte 0, edge next cycle
+                            dq_oe  <= 1'b1;
+                        end else begin
+                            cap_sr[0] <= 1'b1;   // first data edge cycle next
                         end
+                        state <= ST_DATA;
                     end
-                    // cfg_latency must be >= 1 (CSR default 6); the only
-                    // zero-latency case (register write) bypasses ST_LAT.
                 end
 
                 ST_DATA: begin
-                    tick <= ~tick;
-                    if (!tick) begin
-                        if (t_write) begin
-                            dq_out <= wr_data;
-                            dq_oe  <= 1'b1;
-                        end else begin
-                            dq_oe <= 1'b0;
-                        end
-                    end else begin
-                        hb_ck <= ~hb_ck;
-                        if (!t_write)
-                            cap_sr[0] <= 1'b1;             // capture this edge later
-                        phase_edges <= phase_edges - 10'd1;
-                        if (phase_edges == 10'd1) begin
-                            state   <= ST_DRAIN;
-                            csh_cnt <= 3'd7;
-                        end
+                    phase_edges <= phase_edges - 10'd1;
+                    if (t_write)
+                        dq_out <= wr_data;
+                    else if (phase_edges != 10'd1)
+                        cap_sr[0] <= 1'b1;       // another data edge cycle next
+                    if (phase_edges == 10'd1) begin
+                        dq_oe   <= 1'b0;
+                        csh_cnt <= 3'd7;
+                        state   <= ST_DRAIN;
                     end
                 end
 
-                // let in-flight captures land, then raise CS#
                 ST_DRAIN: begin
                     dq_oe   <= 1'b0;
                     csh_cnt <= csh_cnt - 3'd1;
                     if (csh_cnt == 3'd0) begin
-                        hb_csn <= 1'b1;
-                        // account the chunk just finished
+                        hb_csn     <= 1'b1;
                         words_left <= words_left - chunk_left;
                         cur_addr   <= cur_addr + {6'd0, chunk_left};
                         csh_cnt    <= 3'd3;

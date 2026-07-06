@@ -13,7 +13,7 @@ module ternary_mac (
     input  wire        en,           // accumulate this cycle
     input  wire [1:0]  trit,
     input  wire [7:0]  x,            // signed
-    input  wire [3:0]  shift,        // requant shift for q8
+    input  wire [1:0]  shift,        // requant shift for q8 (1..3)
     output reg  signed [17:0] acc,
     output wire [7:0]  q8
 );
@@ -34,12 +34,12 @@ module ternary_mac (
         end
     end
 
-    // round-to-nearest arithmetic shift, saturate to int8.
+    // round-to-nearest arithmetic shift (1..3), saturate to int8.
     // NB: concats are unsigned in Verilog and poison signed contexts (>>> and
     // comparisons), so sign-extension goes through explicitly signed wires.
     wire signed [18:0] acc_e = {acc[17], acc};
-    wire signed [18:0] rnd = acc_e + (19'sd1 <<< (shift - 4'd1));
-    wire signed [18:0] shf = (shift == 4'd0) ? acc_e : (rnd >>> shift);
+    wire signed [18:0] rnd = acc_e + (19'sd1 <<< (shift - 2'd1));
+    wire signed [18:0] shf = rnd >>> shift;
     assign q8 = (shf > 19'sd127)  ? 8'd127 :
                 (shf < -19'sd128) ? 8'h80  : shf[7:0];
 

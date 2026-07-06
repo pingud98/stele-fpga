@@ -37,7 +37,7 @@ documented limitation · **DEFERRED** = explicitly out of this phase's scope
 ### §6 HyperBus PHY
 | Requirement | Status | Evidence |
 |---|---|---|
-| SDR only, single-ended CK | DONE | CK=clk/4, byte per CK edge, data centred |
+| SDR only, single-ended CK | DONE | CK=clk/2, byte per CK edge, data centred (negedge CK reg) |
 | Slow, parametrizable clock | PARTIAL | board wrapper divides (÷4); CSR 2 CLK_DIV reserved but PHY ratio is fixed clk/4 — runtime divider not implemented |
 | Sampled RWDS (CA phase), fixed capture offsets, never strobe-clocked | DONE | `lat2x` sampled at CA edge 4; `cfg_capture` offset; tests m2 both latencies |
 | tCSM-aware bursting, re-issued CA | DONE | `cfg_max_burst` splitting; test_m4 split + negative control |
@@ -144,5 +144,5 @@ All §16 first tasks completed in order.
 2. PACKING CSR reserved; only 2-bit/trit implemented (per pinned default).
 3. No hosted CI (no git remote); `scripts/ci.sh` is the commit gate.
 4. Hardware checkpoints of milestones 1–4 pending a board (by design).
-5. tCSM-vs-Fmax gap for hardware milestone 3+ (REPORT §5 — key finding).
+5. ~~tCSM-vs-Fmax gap~~ — resolved 2026-07-06 (clk/2 PHY + 12 MHz pipeline).
 6. TT area trending above the 8–12-tile sketch (REPORT §2, flagged).

@@ -16,8 +16,8 @@ bitstream. **No hardware was programmed** (no board attached; per runbook).
 | 6. Single-layer FSM vs golden | `sim-top_layer` (bit-exact, all phase checkpoints) | **PASS** |
 | 7. Full per-token generation | `sim-top_full` (8 tokens + final state, bit-exact) | **PASS** |
 | Synthesis (yosys) | `make synth` | **PASS** |
-| Place & route (nextpnr, UP5K sg48) | `make pnr` @ 3 MHz | **PASS** |
-| Timing (icetime) | `make timing` | **PASS** (ceiling 5.64 MHz) |
+| Place & route (nextpnr, UP5K sg48) | `make pnr` @ 12 MHz | **PASS** |
+| Timing (icetime) | `make timing` | **PASS** (12.37 MHz > 12 MHz) |
 | Bitstream | `build/stele.bin` (104,090 B) | **BUILT, not programmed** |
 
 Golden reference sanity: 11/11 pytest. Verilator `-Wall` lint: clean.
@@ -29,7 +29,7 @@ FPGA build (`-DCSR_LITE`, icebreaker wrapper, iCE40UP5K-SG48):
 
 | Resource | Used / Avail |
 |---|---|
-| Logic cells (ICESTORM_LC) | **4096 / 5280 (77%)** |
+| Logic cells (ICESTORM_LC) | **~4000 / 5280 (~75%)** |
 | Block RAM (EBR) | **0 / 30** |
 | DSP (SB_MAC16) | **0 / 8** |
 | SB_IO | 22 / 39 |
@@ -38,11 +38,11 @@ Zero BRAM and zero DSP are by design (spec §14): the 64-byte working regfile
 and CSRs are flops, all multiplies go through **one** shared synthesizable
 8×8 multiplier, nonlinearities are 8-segment PWL.
 
-Timing: nextpnr routes at 3 MHz (wrapper: 12 MHz osc ÷ 4; HyperBus CK =
-750 kHz). icetime critical path 177.3 ns → **max clean clock ≈ 5.6 MHz**
-(critical path runs regfile read mux → shared multiplier → requant). At
-3 MHz the tiny config generates ≈ 0.5 tokens/s (4.45 M cycles / 8 tokens) —
-bus-bound as intended; throughput was explicitly not a goal of this phase.
+Timing: nextpnr routes at **12 MHz** (icebreaker oscillator direct, no PLL;
+HyperBus CK = 6 MHz via the clk/2 PHY). icetime critical path 80.8 ns →
+12.37 MHz. Every transaction is tCSM-safe on the IS66WVH8M8 (max_burst=8 →
+~2.9 µs < 4 µs). Full 8-token generation = 3.42 M cycles → **~28 tokens/s**
+for the tiny config at 12 MHz — bus-bound as intended.
 
 TT-equivalent estimate: ~4.1k LUT4 + ~1.5k FF with full CSRs ≈ 25–30k gate
 equivalents. That is **above the 10–15k-gate sketch and likely toward/above
@@ -91,24 +91,15 @@ smaller), regfile port/mux narrowing, and address-adder sharing.
    offset (CSR 19) and latency (CSR 0) remain boot-tunable in CSR_LITE for
    exactly this.
 
-   **Key finding — tCSM vs Fmax gap (read before milestone 3):** tCSM
-   (CS# low ≤ 4 µs, a DRAM-refresh constraint) puts a *floor* on the clock:
-   even a minimal 1-word access is ~16 CK cycles, so the real part needs
-   CK ≥ 4 MHz ⇒ core clk ≥ 16 MHz in the current CK=clk/4 scheme — but the
-   datapath ceiling is 5.6 MHz. Consequences:
-   - **Milestone 1–2 are unaffected at 3 MHz**: the ID/config registers are
-     not DRAM; register-space transactions have no refresh dependency. First
-     light and CA/latency/capture characterization can proceed as built.
-   - **Milestone 3+ (array access) at 3 MHz violates tCSM** on every
-     transaction: expect statistically flaky readback (missed refresh).
-     Usable for initial PHY characterization only, not for a green M3.
-   - The fix before a trustworthy M3/M4 is timing work to ≥ 16 MHz (pipeline
-     the shared-multiplier/requant path and the regfile read muxes — the
-     critical path is ~40 LUT levels through state decode + rf mux + mul +
-     requant), or a CK=clk/2 PHY variant (≥ 8 MHz clk) at reduced margin.
-     This is also a TT flag: the same floor applies to TT silicon, where the
-     target clock must comfortably exceed 16 MHz or the PHY scheme must move
-     to CK = clk/2.
+   **tCSM vs Fmax gap — RESOLVED** (decision 2026-07-06: clk/2 PHY +
+   pipeline to 12 MHz). The PHY moves one byte per clk (CK = clk/2, 6 MHz),
+   the datapath is pipelined to close at 12 MHz (icetime 12.37 MHz), and the
+   default max_burst=8 keeps every transaction ≈ 2.9 µs — inside the
+   IS66WVH8M8's 4 µs tCSM with margin. All array-access milestones are now
+   clock-legal on real silicon as built. Residual electrical caveat: DQ
+   transitions half a clk before each CK edge (write eye = ±41 ns at
+   12 MHz); the boot-tunable capture offset (CSR 19) absorbs board skew on
+   reads.
 4. Supply a trained/quantised checkpoint later if functional language output
    is wanted; export it through `golden/reference_model.py`'s layout and
    re-run the suite — the RTL needs no change while dims match.

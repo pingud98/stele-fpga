@@ -9,7 +9,7 @@ module tb_phy;
 
     reg  [3:0]  cfg_latency = 4'd6;
     reg  [7:0]  cfg_max_burst = 8'd16;
-    reg  [2:0]  cfg_capture = 3'd2;
+    reg  [2:0]  cfg_capture = 3'd1;
 
     reg         cmd_valid = 0;
     wire        cmd_ready;

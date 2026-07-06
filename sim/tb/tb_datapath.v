@@ -10,7 +10,7 @@ module tb_datapath;
     reg        tm_clr = 0, tm_en = 0;
     reg  [1:0] tm_trit = 0;
     reg  [7:0] tm_x = 0;
-    reg  [3:0] tm_shift = 0;
+    reg  [1:0] tm_shift = 0;
     wire signed [17:0] tm_acc;
     wire [7:0] tm_q8;
     ternary_mac tm (.clk(clk), .rst_n(rst_n), .clr(tm_clr), .en(tm_en),
@@ -23,14 +23,14 @@ module tb_datapath;
     reg  [3:0] mshift = 0;
     reg        p_latch = 0;
     wire [7:0] mul_out, h_new;
-    wire signed [16:0] mul_p;
+    wire signed [16:0] mul_pq;
     reg        mac_en = 0, mac_clr = 0;
     reg  [3:0] mac_shift = 0;
     wire signed [19:0] yacc;
     wire [7:0] yacc_q8;
     scan_alu sa (.clk(clk), .rst_n(rst_n),
                  .mula(mula), .mulb(mulb), .mula_unsigned(mula_unsigned),
-                 .mshift(mshift), .mul_out(mul_out), .mul_p(mul_p),
+                 .mshift(mshift), .mul_out(mul_out), .mul_pq(mul_pq),
                  .p_latch(p_latch), .h_new(h_new),
                  .mac_en(mac_en), .mac_clr(mac_clr), .mac_shift(mac_shift),
                  .yacc(yacc), .yacc_q8(yacc_q8));

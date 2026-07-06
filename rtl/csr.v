@@ -53,8 +53,8 @@ module csr (
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             r_latency   <= 4'd6;
-            r_max_burst <= 8'd16;
-            r_capture   <= 3'd2;
+            r_max_burst <= 8'd8;
+            r_capture   <= 3'd1;
             r_n_tok     <= 8'd8;
             bcnt        <= 7'd0;
             boot_done   <= 1'b0;
@@ -103,7 +103,7 @@ module csr (
         if (!rst_n) begin
             // defaults = golden tiny config (see ASSUMPTIONS.md)
             r[0]  <= 16'd6;      // LATENCY
-            r[1]  <= 16'd16;     // MAX_BURST
+            r[1]  <= 16'd8;      // MAX_BURST (tCSM-safe at CK 6 MHz)
             r[2]  <= 16'd1;      // CLK_DIV (reserved)
             r[3]  <= 16'd64;     // D_MODEL
             r[4]  <= 16'd2;      // N_LAYERS
@@ -121,7 +121,7 @@ module csr (
             r[16] <= 16'd8;      // N_TOK
             r[17] <= 16'd1;      // BOS (informational)
             r[18] <= 16'd0;      // PACKING
-            r[19] <= 16'd2;      // CAPTURE
+            r[19] <= 16'd1;      // CAPTURE
             r[20] <= 16'd9600;   // L_STRIDE
             r[21] <= 16'd2560;   // ST_STRIDE
             r[22] <= 16'd4096;   // OFF_CONV

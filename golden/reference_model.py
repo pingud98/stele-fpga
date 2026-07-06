@@ -265,7 +265,7 @@ def build_image(layers, lm_head, embed):
 # ---------------------------------------------------------------- CSRs
 CSR_DEFAULTS = {
     0: 6,                       # LATENCY (initial latency, CK cycles)
-    1: 16,                      # MAX_BURST (words per transaction)
+    1: 8,                       # MAX_BURST (words; tCSM-safe at CK 6 MHz)
     2: 1,                       # CLK_DIV (reserved; PHY fixed at clk/4)
     3: D_MODEL, 4: N_LAYERS, 5: D_INNER, 6: D_STATE, 7: D_CONV,
     8: DT_RANK, 9: VOCAB,
@@ -273,7 +273,7 @@ CSR_DEFAULTS = {
     12: STATE_BASE & 0xFFFF, 13: STATE_BASE >> 16,
     14: SCRATCH_BASE & 0xFFFF, 15: SCRATCH_BASE >> 16,
     16: N_TOK, 17: BOS, 18: 0,  # PACKING=0 (2-bit/trit)
-    19: 2,                      # CAPTURE (clk from CK edge to DQ sample)
+    19: 1,                      # CAPTURE (clk from CK edge to DQ sample)
     20: 0,                      # L_STRIDE  (filled below)
     21: 0,                      # ST_STRIDE (filled below)
     22: 0, 23: 0, 24: 0, 25: 0, 26: 0, 27: 0, 28: 0, 29: 0,

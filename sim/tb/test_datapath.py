@@ -68,7 +68,7 @@ async def test_ternary_mac_random_rows(dut):
     enc = {0: 0, 1: 1, -1: 2}
     for _ in range(20):
         cols = random.choice([4, 36, 64, 128])
-        shift = random.choice([1, 2, 3, 6])
+        shift = random.choice([1, 2, 3])
         trits = [random.choice([-1, 0, 1]) for _ in range(cols)]
         xs = [random.randrange(-128, 128) for _ in range(cols)]
         dut.tm_clr.value = 1
@@ -90,18 +90,21 @@ async def test_ternary_mac_random_rows(dut):
 
 # ---------------------------------------------------------------- scan ALU
 async def h_update(dut, ab, hv, bb, u):
-    """Two-step h update through the shared multiplier: latch abar*h, then
-    present bbar*u and read h_new (as the sequencer does in S_SC_N3/N4)."""
+    """h update through the pipelined shared multiplier, as the sequencer
+    does in S_SC_N3..N4B: present abar*h (product registers), p_latch it,
+    present bbar*u (product registers), read h_new."""
     from cocotb.triggers import RisingEdge
     dut.mula.value = ab
     dut.mulb.value = hv & 0xFF
     dut.mula_unsigned.value = 1
+    await RisingEdge(dut.clk)      # mul_pq <= abar*h
     dut.p_latch.value = 1
-    await RisingEdge(dut.clk)
+    await RisingEdge(dut.clk)      # p_r <= mul_pq
     dut.p_latch.value = 0
     dut.mula.value = bb & 0xFF
     dut.mulb.value = u & 0xFF
     dut.mula_unsigned.value = 0
+    await RisingEdge(dut.clk)      # mul_pq <= bbar*u
     await Timer(1, "ns")
     return int(dut.h_new.value)
 
@@ -124,25 +127,27 @@ async def test_scan_h_update(dut):
 
 @cocotb.test()
 async def test_scan_mul_requant(dut):
-    """mul_out = sat8(rr(a*b, shift)) signed/unsigned; mul_p raw product."""
+    """mul_out = sat8(rr(a*b, shift)); results one clk after operands
+    (registered product)."""
     await setup(dut)
     random.seed(8)
     for _ in range(400):
         a = random.randrange(-128, 128)
         b = random.randrange(-128, 128)
-        sh = random.choice([0, 1, 3, 4, 5, 7])
+        sh = random.choice([4, 5])  # the only shifts in the design
         au = random.randrange(2)
         av = a & 0xFF if not au else random.randrange(256)
         dut.mula.value = av if au else (a & 0xFF)
         dut.mulb.value = b & 0xFF
         dut.mula_unsigned.value = au
         dut.mshift.value = sh
+        await RisingEdge(dut.clk)     # product registers
         await Timer(1, "ns")
         aval = av if au else a
         prod = aval * b
         want = int(rm.sat8(rm.rshift_round(prod, sh))) & 0xFF if sh else \
             int(rm.sat8(prod)) & 0xFF
-        assert int(dut.mul_p.value.to_signed()) == prod
+        assert int(dut.mul_pq.value.to_signed()) == prod
         got = int(dut.mul_out.value)
         assert got == want, f"mul({aval},{b},sh={sh},u={au}): {got}!={want}"
 
@@ -158,12 +163,14 @@ async def test_scan_y_accumulator(dut):
         dut.mac_clr.value = 0
         pairs = [(random.randrange(-128, 128), random.randrange(-128, 128))
                  for _ in range(rm.D_STATE)]
-        dut.mac_en.value = 1
         dut.mula_unsigned.value = 0
         for c, h in pairs:
             dut.mula.value = c & 0xFF
             dut.mulb.value = h & 0xFF
-            await RisingEdge(dut.clk)
+            dut.mac_en.value = 0
+            await RisingEdge(dut.clk)  # product registers
+            dut.mac_en.value = 1
+            await RisingEdge(dut.clk)  # yacc += mul_pq
         dut.mac_en.value = 0
         dut.mac_shift.value = rm.S_C
         await FallingEdge(dut.clk)
@@ -181,10 +188,11 @@ async def test_scan_worstcase_yacc(dut):
         dut.mac_clr.value = 1
         await RisingEdge(dut.clk)
         dut.mac_clr.value = 0
-        dut.mac_en.value = 1
         dut.mula_unsigned.value = 0
         dut.mula.value = 127
         dut.mulb.value = (127 * sign) & 0xFF
+        await RisingEdge(dut.clk)      # pipeline fill
+        dut.mac_en.value = 1
         for _ in range(16):
             await RisingEdge(dut.clk)
         dut.mac_en.value = 0
@@ -217,8 +225,9 @@ async def test_scan_step_vs_golden_trace(dut):
             dut.mula.value = int(delta[c]) & 0xFF
             dut.mulb.value = int(A[c][n]) & 0xFF
             dut.mula_unsigned.value = 1
+            await RisingEdge(dut.clk)
             await Timer(1, "ns")
-            dA = int(dut.mul_p.value.to_signed())
+            dA = int(dut.mul_pq.value.to_signed())
             dut.pwl_sel.value = 2
             dut.pwl_x.value = dA & 0xFFFF
             await Timer(1, "ns")
@@ -226,6 +235,7 @@ async def test_scan_step_vs_golden_trace(dut):
             # bbar via mul path
             dut.mulb.value = int(B[n]) & 0xFF
             dut.mshift.value = rm.S_DB
+            await RisingEdge(dut.clk)
             await Timer(1, "ns")
             bbar = s8(int(dut.mul_out.value))
             # serialized h update

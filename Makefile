@@ -45,10 +45,10 @@ synth: build lint
 pnr: build
 	nextpnr-ice40 --up5k --package sg48 --json build/stele.json \
 	  --pcf fpga/icebreaker.pcf --asc build/stele.asc \
-	  --freq 3 --report build/pnr_report.json -l build/pnr.log
+	  --freq 12 --report build/pnr_report.json -l build/pnr.log
 
 timing: build
-	icetime -d up5k -P sg48 -c 3 -t -r build/timing.rpt build/stele.asc
+	icetime -d up5k -P sg48 -c 12 -t -r build/timing.rpt build/stele.asc
 	@cat build/timing.rpt
 
 bitstream: build

@@ -166,3 +166,24 @@ Timestamped per-stage log. Operator-facing.
   rewrite), scripts/ci.sh added (spec §11 CI gate incl. §14 area flag),
   docs/brief.md added per §10 layout, make golden now regenerates the tiny LM.
 - hyperram_model gained a +IMAGE plusarg for per-run image override.
+
+## 2026-07-06 15:10 — §15 confirmations + tCSM/Fmax resolution — DONE
+
+- James confirmed all four §15 decisions (IS66WVH8M8, 2-bit packing, 7-bit
+  vocab/VOCAB=128, tiny default dims). Model/tests updated to the part's
+  identity (ID0=0x0C83 ISSI, ID1=0x0001 — verify at first silicon ID read).
+- James chose the recommended tCSM fix: **clk/2 PHY + pipeline to 12 MHz**.
+  - PHY rewritten: one byte per clk, CK=clk/2 via the design's only negedge
+    register (data centred on every CK edge); CK never pauses; first write
+    byte overlaps the last CA/latency cycle. PHY suite 9/9 on first run
+    after review.
+  - Datapath pipelined in three steps, each measured with nextpnr:
+    5.9 -> 8.5 MHz (registered multiplier product), -> 9.5 MHz (fixed-shift
+    requants, q8 stage, dead PWL cone removed), -> **12.9 MHz routed /
+    12.37 MHz icetime** (registered PWL input). State space widened to
+    7 bits (caught an encoding overflow at 64 states before it shipped).
+  - Defaults now CAPTURE=1, MAX_BURST=8 (~2.9 us/transaction at CK 6 MHz,
+    tCSM-safe on IS66WVH8M8). icebreaker runs at the 12 MHz osc directly.
+- Freeze gate: **24/24 tests green**; full 8-token generation bit-exact in
+  3,423,016 cycles (was 4,448,840) -> ~28 tokens/s at 12 MHz.
+- build/stele.bin rebuilt at 12 MHz. Demo logs regenerated.

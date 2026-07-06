@@ -27,15 +27,9 @@ module top_icebreaker (
     output wire       LEDG_N      // busy indicator (active low LED)
 );
 
-    // core clock: 12 MHz oscillator divided by 4 -> 3 MHz (CK = 750 kHz).
-    // icetime puts the datapath ceiling at ~5.75 MHz; 3 MHz is the next
-    // clean divider below it and the brief calls for a slow first light.
-    // Raise toward ~5 MHz with icepll once milestone 3 passes on hardware.
-    reg [1:0] clk_cnt = 2'b00;
-    always @(posedge CLK) clk_cnt <= clk_cnt + 2'd1;
-    wire clk_core;
-    SB_GB gb (.USER_SIGNAL_TO_GLOBAL_BUFFER(clk_cnt[1]),
-              .GLOBAL_BUFFER_OUTPUT(clk_core));
+    // core clock: 12 MHz oscillator direct (CK = 6 MHz), tCSM-safe on the
+    // IS66WVH8M8 with the default max_burst=8 (~2.9 us per transaction).
+    wire clk_core = CLK;
 
     // reset synchronizer from the button
     reg [3:0] rst_sr = 4'b0000;
