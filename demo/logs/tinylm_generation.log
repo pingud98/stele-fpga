@@ -7,14 +7,14 @@ model    : order-1 Markov (bigram), MLE-trained on corpus 'fpga works'
 bigram   : ' '->'w' 'a'->' ' 'f'->'p' 'g'->'a' 'k'->'s' 'o'->'r' 'p'->'g' 'r'->'k' 's'->'f' 'w'->'o'
 
 boot     : cfg_mode=1, streamed 64 CSR bytes over uio:
-           00 06 00 10 00 01 00 40 00 02 00 80 00 10 00 04
+           00 06 00 08 00 01 00 40 00 02 00 80 00 10 00 04
            00 04 00 80 00 00 00 00 00 00 00 04 00 00 00 05
-           00 14 00 01 00 00 00 02 25 80 0a 00 10 00 10 80
+           00 14 00 01 00 00 00 01 25 80 0a 00 10 00 10 80
            15 00 15 80 1d 80 4b 00 53 00 08 00 00 00 00 00
 input    : host_drive+in_valid, prompt token 6 ('f') on uio
 running  : 20 tokens, autoregressive (embedding -> 2 layers -> LM head argmax per token)...
 
-output   : 20 tokens in 11122100 clk cycles (556105 cycles/token)
+output   : 20 tokens in 8665060 clk cycles (433253 cycles/token)
   token[ 0] uio=0x10 ( 16) -> 'p'
   token[ 1] uio=0x07 (  7) -> 'g'
   token[ 2] uio=0x01 (  1) -> 'a'
